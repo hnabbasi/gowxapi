@@ -7,9 +7,10 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -20,70 +21,42 @@ const (
 )
 
 func main() {
-	getWeatherAlertsSample()
-	// loc := getLocation("29.7608,-95.3695")
-	// fmt.Println(loc.toString())
+	router := gin.Default()
+	router.GET("/location/:coords", getLocation)
+	router.GET("/alerts/:state", getAlertsForState)
+	router.Run("localhost:8080")
 }
 
-func getLocation(coords string) Location {
+func getLocation(c *gin.Context) {
+	coords := c.Param("coords")
 	url := fmt.Sprintf(getLocationByPoints, coords)
 	log.Println(url)
 
 	response, err := getHttpResponse(url)
-
 	if err != nil {
 		log.Fatal(err)
-		return Location{}
+		c.IndentedJSON(http.StatusInternalServerError, "Could not get response")
 	}
 
 	var location Location
-
 	if jsonErr := json.Unmarshal(response, &location); jsonErr != nil {
 		log.Fatal(jsonErr)
-		return Location{}
+		c.IndentedJSON(http.StatusInternalServerError, "Could not find location")
 	}
-	return location
+
+	c.IndentedJSON(http.StatusOK, location)
 }
 
-func getWeatherAlertsSample() {
-	log.SetFlags(0)
-
-	fmt.Println("Welcome to Weather Conditions API")
-
-	if len(os.Args) < 2 {
-		log.Fatal(errors.New("state code missing"))
-		os.Exit(1)
-	}
-
-	result, err := getAlertsForState(strings.ToUpper(os.Args[1]))
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	n := len(result)
-	hasDivider := n > 1
-	log.Printf("\u250F")
-	for i, alert := range result {
-		log.Printf(" (%v) Areas affected: %v\n", i+1, alert.Properties.AffectedAreas)
-		log.Printf(" Event: %v\n", alert.Properties.Event)
-		log.Printf(" Headline: %v\n", alert.Properties.Headline)
-		log.Printf(" Id: %v\n", alert.Id)
-		if hasDivider && i != n-1 {
-			log.Println("\u2523")
-		}
-	}
-	log.Println("\u2517")
-}
-
-func getAlertsForState(state string) ([]Alert, error) {
-	url := fmt.Sprintf("%v/%v", stateAlerts, state)
+func getAlertsForState(c *gin.Context) {
+	state := c.Param("state")
+	url := fmt.Sprintf("%v/%v", stateAlerts, strings.ToUpper(state))
 	log.Println(url)
 
 	response, err := getHttpResponse(url)
 
 	if err != nil {
 		log.Fatal(err)
-		return nil, errors.New(err.Error())
+		c.IndentedJSON(http.StatusInternalServerError, "Could not get response")
 	}
 
 	var alertResponse struct {
@@ -93,19 +66,17 @@ func getAlertsForState(state string) ([]Alert, error) {
 
 	if jsonErr := json.Unmarshal(response, &alertResponse); jsonErr != nil {
 		log.Fatal(jsonErr)
-		log.Println("Can not unmarshal JSON")
+		c.IndentedJSON(http.StatusInternalServerError, "Could not get alerts")
+	}
+	var resp struct {
+		Updated string  `json:"updated"`
+		Alerts  []Alert `json:"alerts"`
 	}
 
-	count := len(alertResponse.Alerts)
-	if count == 0 {
-		log.Printf("No alerts found for the state of %v\n\n", state)
-	} else if count == 1 {
-		log.Println("Found 1 alert")
-	} else {
-		log.Printf("Found %v alerts\n\n", count)
-	}
+	resp.Updated = alertResponse.Updated
+	resp.Alerts = alertResponse.Alerts
 
-	return alertResponse.Alerts, nil
+	c.IndentedJSON(http.StatusOK, resp)
 }
 
 func getHttpResponse(url string) ([]byte, error) {
@@ -194,24 +165,24 @@ func (location *Location) getObservationStation() string {
 func (location *Location) toString() string {
 	str := ""
 
-	str += fmt.Sprintf("Id:\t%v\n", location.Id)
-	str += fmt.Sprintf("CountyWarningArea:\t%v\n", location.Properties.CountyWarningArea)
-	str += fmt.Sprintf("GridId:\t%v\n", location.Properties.GridId)
-	str += fmt.Sprintf("GridX:\t%v\n", location.Properties.GridX)
-	str += fmt.Sprintf("GridY:\t%v\n", location.Properties.GridY)
-	str += fmt.Sprintf("ObservationStationsUrl:\t%v\n", location.Properties.ObservationStationsUrl)
-	str += fmt.Sprintf("Coordinates:\t%v\n", location.Properties.RelativeLocation.Geometry.Coordinates)
-	str += fmt.Sprintf("City:\t%v\n", location.Properties.RelativeLocation.Properties.City)
-	str += fmt.Sprintf("State:\t%v\n", location.Properties.RelativeLocation.Properties.State)
-	str += fmt.Sprintf("ForecastGridDataUrl:\t%v\n", location.Properties.ForecastGridDataUrl)
-	str += fmt.Sprintf("ForecastUrl:\t%v\n", location.Properties.ForecastUrl)
-	str += fmt.Sprintf("HourlyForecastUrl:\t%v\n", location.Properties.HourlyForecastUrl)
-	str += fmt.Sprintf("TimeZone:\t%v\n", location.Properties.TimeZone)
-	str += fmt.Sprintf("County:\t%v\n", location.Properties.County)
-	str += fmt.Sprintf("ZoneForecast:\t%v\n", location.Properties.ZoneForecast)
-	str += fmt.Sprintf("FireWeatherZone:\t%v\n", location.Properties.FireWeatherZone)
-	str += fmt.Sprintf("RadarStationUrl:\t%v\n", location.Properties.RadarStationUrl)
-	str += fmt.Sprintf("ObservationStation:\t%v\n", location.getObservationStation())
+	str += fmt.Sprintf("Id: %v\n", location.Id)
+	str += fmt.Sprintf("CountyWarningArea: %v\n", location.Properties.CountyWarningArea)
+	str += fmt.Sprintf("GridId: %v\n", location.Properties.GridId)
+	str += fmt.Sprintf("GridX: %v\n", location.Properties.GridX)
+	str += fmt.Sprintf("GridY: %v\n", location.Properties.GridY)
+	str += fmt.Sprintf("ObservationStationsUrl: %v\n", location.Properties.ObservationStationsUrl)
+	str += fmt.Sprintf("Coordinates: %v\n", location.Properties.RelativeLocation.Geometry.Coordinates)
+	str += fmt.Sprintf("City: %v\n", location.Properties.RelativeLocation.Properties.City)
+	str += fmt.Sprintf("State: %v\n", location.Properties.RelativeLocation.Properties.State)
+	str += fmt.Sprintf("ForecastGridDataUrl: %v\n", location.Properties.ForecastGridDataUrl)
+	str += fmt.Sprintf("ForecastUrl: %v\n", location.Properties.ForecastUrl)
+	str += fmt.Sprintf("HourlyForecastUrl: %v\n", location.Properties.HourlyForecastUrl)
+	str += fmt.Sprintf("TimeZone: %v\n", location.Properties.TimeZone)
+	str += fmt.Sprintf("County: %v\n", location.Properties.County)
+	str += fmt.Sprintf("ZoneForecast: %v\n", location.Properties.ZoneForecast)
+	str += fmt.Sprintf("FireWeatherZone: %v\n", location.Properties.FireWeatherZone)
+	str += fmt.Sprintf("RadarStationUrl: %v\n", location.Properties.RadarStationUrl)
+	str += fmt.Sprintf("ObservationStation: %v\n", location.getObservationStation())
 
 	return str
 }
