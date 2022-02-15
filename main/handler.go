@@ -21,12 +21,24 @@ const (
 )
 
 func main() {
+	setupServer()
+}
+
+func setupServer() {
 	router := gin.Default()
-	router.GET("/location/:coords", getLocation)
-	router.GET("/alerts/:state", getAlertsForState)
+	setupRoutes(router)
 	router.Run("localhost:8080")
 }
 
+func setupRoutes(router *gin.Engine) {
+	router.GET("/", home)
+	router.GET("/location/:coords", getLocation)
+	router.GET("/alerts/:state", getAlertsForState)
+}
+
+func home(c *gin.Context) {
+	c.IndentedJSON(http.StatusOK, "Welcome to Hussain's Weather API")
+}
 func getLocation(c *gin.Context) {
 	coords := c.Param("coords")
 	url := fmt.Sprintf(getLocationByPoints, coords)
@@ -44,7 +56,7 @@ func getLocation(c *gin.Context) {
 		c.IndentedJSON(http.StatusInternalServerError, "Could not find location")
 	}
 
-	c.IndentedJSON(http.StatusOK, location)
+	c.IndentedJSON(http.StatusOK, makeLocationResponse(location))
 }
 
 func getAlertsForState(c *gin.Context) {
@@ -68,15 +80,10 @@ func getAlertsForState(c *gin.Context) {
 		log.Fatal(jsonErr)
 		c.IndentedJSON(http.StatusInternalServerError, "Could not get alerts")
 	}
-	var resp struct {
-		Updated string  `json:"updated"`
-		Alerts  []Alert `json:"alerts"`
-	}
 
-	resp.Updated = alertResponse.Updated
-	resp.Alerts = alertResponse.Alerts
-
-	c.IndentedJSON(http.StatusOK, resp)
+	c.IndentedJSON(http.StatusOK, AlertResponse{
+		Updated: alertResponse.Updated,
+		Alerts:  alertResponse.Alerts})
 }
 
 func getHttpResponse(url string) ([]byte, error) {
@@ -104,6 +111,11 @@ type Alert struct {
 		Headline      string `json:"headline,omitempty"`
 		AffectedAreas string `json:"areaDesc,omitempty"`
 	} `json:"properties,omitempty"`
+}
+
+type AlertResponse struct {
+	Updated string  `json:"updated"`
+	Alerts  []Alert `json:"alerts"`
 }
 
 type Location struct {
@@ -185,6 +197,49 @@ func (location *Location) toString() string {
 	str += fmt.Sprintf("ObservationStation: %v\n", location.getObservationStation())
 
 	return str
+}
+
+type LocationResponse struct {
+	Id                     string    `json:"id"`
+	City                   string    `json:"city"`
+	State                  string    `json:"state"`
+	Coordinates            []float64 `json:"coordinates"`
+	CountyWarningArea      string    `json:"cwa"`
+	GridId                 string    `json:"gridId"`
+	GridX                  int       `json:"gridX"`
+	GridY                  int       `json:"gridY"`
+	ObservationStationsUrl string    `json:"observationStations"`
+	ForecastGridDataUrl    string    `json:"forecastGridData"`
+	ForecastUrl            string    `json:"forecast"`
+	HourlyForecastUrl      string    `json:"forecastHourly"`
+	TimeZone               string    `json:"timeZone"`
+	County                 string    `json:"county"`
+	ZoneForecast           string    `json:"forecastZone"`
+	FireWeatherZone        string    `json:"fireWeatherZone"`
+	RadarStationUrl        string    `json:"radarStation"`
+	ObservationStation     string    `json:"observationStation"`
+}
+
+func makeLocationResponse(location Location) LocationResponse {
+	return LocationResponse{
+		Id:                     location.Id,
+		City:                   location.Properties.RelativeLocation.Properties.City,
+		State:                  location.Properties.RelativeLocation.Properties.State,
+		Coordinates:            location.Properties.RelativeLocation.Geometry.Coordinates,
+		CountyWarningArea:      location.Properties.CountyWarningArea,
+		GridId:                 location.Properties.GridId,
+		GridX:                  location.Properties.GridX,
+		GridY:                  location.Properties.GridY,
+		ObservationStationsUrl: location.Properties.ObservationStationsUrl,
+		ForecastGridDataUrl:    location.Properties.ForecastGridDataUrl,
+		ForecastUrl:            location.Properties.ForecastUrl,
+		HourlyForecastUrl:      location.Properties.HourlyForecastUrl,
+		TimeZone:               location.Properties.TimeZone,
+		County:                 location.Properties.County,
+		ZoneForecast:           location.Properties.ZoneForecast,
+		FireWeatherZone:        location.Properties.FireWeatherZone,
+		RadarStationUrl:        location.Properties.RadarStationUrl,
+		ObservationStation:     location.getObservationStation()}
 }
 
 // begin: Period
