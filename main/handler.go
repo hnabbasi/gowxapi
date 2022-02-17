@@ -15,9 +15,11 @@ import (
 
 const (
 	baseURL                        = "https://api.weather.gov"
+	geocodeURL                     = "http://api.openweathermap.org/geo/1.0/direct?q="
 	stateAlerts                    = baseURL + "/alerts/active/area"
 	getLatestObservationsByStation = baseURL + "/stations/%v/observations/latest"
 	getLocationByPoints            = baseURL + "/points/%v"
+	apiKey                         = "API_KEY"
 )
 
 func main() {
@@ -32,13 +34,39 @@ func setupServer() {
 
 func setupRoutes(router *gin.Engine) {
 	router.GET("/", home)
-	router.GET("/location/:coords", getLocation)
+	router.GET("/weather/:cityState", getWeather)
 	router.GET("/alerts/:state", getAlertsForState)
 }
 
 func home(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, "Welcome to Hussain's Weather API")
 }
+
+func getWeather(c *gin.Context) {
+	cityState := getCity(c.Param("cityState"))
+	// TODO: use these coords to get location and then weather
+	c.IndentedJSON(http.StatusOK, cityState)
+}
+
+func getCity(c string) string {
+	url := fmt.Sprintf("%v%v&limit=1&appid=%v", geocodeURL, c, apiKey)
+
+	response, err := getHttpResponse(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var cityResponse []struct {
+		Lat  float64 `json:"lat"`
+		Long float64 `json:"lon"`
+	}
+
+	if e := json.Unmarshal(response, &cityResponse); e != nil {
+		log.Fatal(e)
+	}
+	return fmt.Sprintf("%v,%v", cityResponse[0].Lat, cityResponse[0].Long)
+}
+
 func getLocation(c *gin.Context) {
 	coords := c.Param("coords")
 	url := fmt.Sprintf(getLocationByPoints, coords)
