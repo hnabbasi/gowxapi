@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,8 +20,10 @@ const (
 	stateAlerts                    = baseURL + "/alerts/active/area"
 	getLatestObservationsByStation = baseURL + "/stations/%v/observations/latest"
 	getLocationByPoints            = baseURL + "/points/%v"
-	apiKey                         = "API_KEY"
+	apiKey                         = "297532c551bed3f6704e6d6db1ff7b64"
 )
+
+var wg = sync.WaitGroup{}
 
 func main() {
 	setupServer()
@@ -43,17 +46,35 @@ func home(c *gin.Context) {
 }
 
 func getWeather(c *gin.Context) {
-	cityState := getCity(c.Param("cityState"))
-	// TODO: use these coords to get location and then weather
-	c.IndentedJSON(http.StatusOK, cityState)
+	var weatherResponse WeatherResponse
+	wg.Add(1)
+
+	coords, err := getCity(c.Param("cityState"))
+	if err != nil {
+		c.IndentedJSON(http.StatusBadRequest, err.Error())
+	}
+	// get location details
+	go getLocation(coords, &weatherResponse)
+	// if err != nil {
+	// 	c.IndentedJSON(http.StatusBadRequest, fmt.Sprintf("Location not found for %v", c.Param("cityState")))
+	// }
+
+	// get current conditions / observations
+	// get hourly forecast
+	// get weekly forecast
+	// get rain chances
+
+	wg.Wait()
+	c.IndentedJSON(http.StatusOK, weatherResponse)
 }
 
-func getCity(c string) string {
+func getCity(c string) (string, error) {
 	url := fmt.Sprintf("%v%v&limit=1&appid=%v", geocodeURL, c, apiKey)
-
+	log.Printf("Get city: %v", url)
 	response, err := getHttpResponse(url)
 	if err != nil {
 		log.Fatal(err)
+		return "", errors.New(err.Error())
 	}
 
 	var cityResponse []struct {
@@ -63,28 +84,30 @@ func getCity(c string) string {
 
 	if e := json.Unmarshal(response, &cityResponse); e != nil {
 		log.Fatal(e)
+		return "", errors.New(err.Error())
 	}
-	return fmt.Sprintf("%v,%v", cityResponse[0].Lat, cityResponse[0].Long)
+	return fmt.Sprintf("%v,%v", cityResponse[0].Lat, cityResponse[0].Long), nil
 }
 
-func getLocation(c *gin.Context) {
-	coords := c.Param("coords")
+func getLocation(coords string, weatherResponse *WeatherResponse) {
 	url := fmt.Sprintf(getLocationByPoints, coords)
-	log.Println(url)
+	log.Printf("Get location url: %v", url)
 
 	response, err := getHttpResponse(url)
 	if err != nil {
 		log.Fatal(err)
-		c.IndentedJSON(http.StatusInternalServerError, "Could not get response")
+		// return LocationResponse{}, errors.New(err.Error())
 	}
 
-	var location Location
+	var location LocationDTO
 	if jsonErr := json.Unmarshal(response, &location); jsonErr != nil {
 		log.Fatal(jsonErr)
-		c.IndentedJSON(http.StatusInternalServerError, "Could not find location")
+		// return LocationResponse{}, errors.New(err.Error())
 	}
 
-	c.IndentedJSON(http.StatusOK, makeLocationResponse(location))
+	// return makeLocationResponse(location), nil
+	weatherResponse.LocationResponse = makeLocationResponse(location)
+	wg.Done()
 }
 
 func getAlertsForState(c *gin.Context) {
@@ -146,7 +169,7 @@ type AlertResponse struct {
 	Alerts  []Alert `json:"alerts"`
 }
 
-type Location struct {
+type LocationDTO struct {
 	Id         string `json:"id,omitempty"`
 	Properties struct {
 		CountyWarningArea      string `json:"cwa,omitempty"`
@@ -177,8 +200,8 @@ type Location struct {
 	ObservationStation string
 }
 
-func (location *Location) getObservationStation() string {
-	url := location.Properties.ObservationStationsUrl
+func (locationDTO *LocationDTO) getObservationStation() string {
+	url := locationDTO.Properties.ObservationStationsUrl
 	stations, err := getHttpResponse(url)
 
 	if err != nil {
@@ -198,31 +221,31 @@ func (location *Location) getObservationStation() string {
 	}
 
 	station := response.Features[0].Properties.StationId
-	location.ObservationStation = station
+	locationDTO.ObservationStation = station
 	return station
 }
 
-func (location *Location) toString() string {
+func (locationDTO *LocationDTO) toString() string {
 	str := ""
 
-	str += fmt.Sprintf("Id: %v\n", location.Id)
-	str += fmt.Sprintf("CountyWarningArea: %v\n", location.Properties.CountyWarningArea)
-	str += fmt.Sprintf("GridId: %v\n", location.Properties.GridId)
-	str += fmt.Sprintf("GridX: %v\n", location.Properties.GridX)
-	str += fmt.Sprintf("GridY: %v\n", location.Properties.GridY)
-	str += fmt.Sprintf("ObservationStationsUrl: %v\n", location.Properties.ObservationStationsUrl)
-	str += fmt.Sprintf("Coordinates: %v\n", location.Properties.RelativeLocation.Geometry.Coordinates)
-	str += fmt.Sprintf("City: %v\n", location.Properties.RelativeLocation.Properties.City)
-	str += fmt.Sprintf("State: %v\n", location.Properties.RelativeLocation.Properties.State)
-	str += fmt.Sprintf("ForecastGridDataUrl: %v\n", location.Properties.ForecastGridDataUrl)
-	str += fmt.Sprintf("ForecastUrl: %v\n", location.Properties.ForecastUrl)
-	str += fmt.Sprintf("HourlyForecastUrl: %v\n", location.Properties.HourlyForecastUrl)
-	str += fmt.Sprintf("TimeZone: %v\n", location.Properties.TimeZone)
-	str += fmt.Sprintf("County: %v\n", location.Properties.County)
-	str += fmt.Sprintf("ZoneForecast: %v\n", location.Properties.ZoneForecast)
-	str += fmt.Sprintf("FireWeatherZone: %v\n", location.Properties.FireWeatherZone)
-	str += fmt.Sprintf("RadarStationUrl: %v\n", location.Properties.RadarStationUrl)
-	str += fmt.Sprintf("ObservationStation: %v\n", location.getObservationStation())
+	str += fmt.Sprintf("Id: %v\n", locationDTO.Id)
+	str += fmt.Sprintf("CountyWarningArea: %v\n", locationDTO.Properties.CountyWarningArea)
+	str += fmt.Sprintf("GridId: %v\n", locationDTO.Properties.GridId)
+	str += fmt.Sprintf("GridX: %v\n", locationDTO.Properties.GridX)
+	str += fmt.Sprintf("GridY: %v\n", locationDTO.Properties.GridY)
+	str += fmt.Sprintf("ObservationStationsUrl: %v\n", locationDTO.Properties.ObservationStationsUrl)
+	str += fmt.Sprintf("Coordinates: %v\n", locationDTO.Properties.RelativeLocation.Geometry.Coordinates)
+	str += fmt.Sprintf("City: %v\n", locationDTO.Properties.RelativeLocation.Properties.City)
+	str += fmt.Sprintf("State: %v\n", locationDTO.Properties.RelativeLocation.Properties.State)
+	str += fmt.Sprintf("ForecastGridDataUrl: %v\n", locationDTO.Properties.ForecastGridDataUrl)
+	str += fmt.Sprintf("ForecastUrl: %v\n", locationDTO.Properties.ForecastUrl)
+	str += fmt.Sprintf("HourlyForecastUrl: %v\n", locationDTO.Properties.HourlyForecastUrl)
+	str += fmt.Sprintf("TimeZone: %v\n", locationDTO.Properties.TimeZone)
+	str += fmt.Sprintf("County: %v\n", locationDTO.Properties.County)
+	str += fmt.Sprintf("ZoneForecast: %v\n", locationDTO.Properties.ZoneForecast)
+	str += fmt.Sprintf("FireWeatherZone: %v\n", locationDTO.Properties.FireWeatherZone)
+	str += fmt.Sprintf("RadarStationUrl: %v\n", locationDTO.Properties.RadarStationUrl)
+	str += fmt.Sprintf("ObservationStation: %v\n", locationDTO.getObservationStation())
 
 	return str
 }
@@ -248,26 +271,26 @@ type LocationResponse struct {
 	ObservationStation     string    `json:"observationStation"`
 }
 
-func makeLocationResponse(location Location) LocationResponse {
+func makeLocationResponse(locationDTO LocationDTO) LocationResponse {
 	return LocationResponse{
-		Id:                     location.Id,
-		City:                   location.Properties.RelativeLocation.Properties.City,
-		State:                  location.Properties.RelativeLocation.Properties.State,
-		Coordinates:            location.Properties.RelativeLocation.Geometry.Coordinates,
-		CountyWarningArea:      location.Properties.CountyWarningArea,
-		GridId:                 location.Properties.GridId,
-		GridX:                  location.Properties.GridX,
-		GridY:                  location.Properties.GridY,
-		ObservationStationsUrl: location.Properties.ObservationStationsUrl,
-		ForecastGridDataUrl:    location.Properties.ForecastGridDataUrl,
-		ForecastUrl:            location.Properties.ForecastUrl,
-		HourlyForecastUrl:      location.Properties.HourlyForecastUrl,
-		TimeZone:               location.Properties.TimeZone,
-		County:                 location.Properties.County,
-		ZoneForecast:           location.Properties.ZoneForecast,
-		FireWeatherZone:        location.Properties.FireWeatherZone,
-		RadarStationUrl:        location.Properties.RadarStationUrl,
-		ObservationStation:     location.getObservationStation()}
+		Id:                     locationDTO.Id,
+		City:                   locationDTO.Properties.RelativeLocation.Properties.City,
+		State:                  locationDTO.Properties.RelativeLocation.Properties.State,
+		Coordinates:            locationDTO.Properties.RelativeLocation.Geometry.Coordinates,
+		CountyWarningArea:      locationDTO.Properties.CountyWarningArea,
+		GridId:                 locationDTO.Properties.GridId,
+		GridX:                  locationDTO.Properties.GridX,
+		GridY:                  locationDTO.Properties.GridY,
+		ObservationStationsUrl: locationDTO.Properties.ObservationStationsUrl,
+		ForecastGridDataUrl:    locationDTO.Properties.ForecastGridDataUrl,
+		ForecastUrl:            locationDTO.Properties.ForecastUrl,
+		HourlyForecastUrl:      locationDTO.Properties.HourlyForecastUrl,
+		TimeZone:               locationDTO.Properties.TimeZone,
+		County:                 locationDTO.Properties.County,
+		ZoneForecast:           locationDTO.Properties.ZoneForecast,
+		FireWeatherZone:        locationDTO.Properties.FireWeatherZone,
+		RadarStationUrl:        locationDTO.Properties.RadarStationUrl,
+		ObservationStation:     locationDTO.getObservationStation()}
 }
 
 // begin: Period
@@ -331,3 +354,10 @@ func (f *DailyForecast) SetNight(temp int, icon string) {
 }
 
 // end: DailyForecast
+
+type WeatherResponse struct {
+	AlertResponse
+	LocationResponse
+	Hourly []Period
+	Weekly []DailyForecast
+}
