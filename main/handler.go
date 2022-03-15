@@ -24,10 +24,7 @@ const (
 )
 
 var (
-	wg              = sync.WaitGroup{}
-	coordsChannel   = make(chan string)
-	locationChannel = make(chan LocationResponse)
-	alertsChannel   = make(chan AlertResponse)
+	wg = sync.WaitGroup{}
 )
 
 func main() {
@@ -64,7 +61,12 @@ func getAlertsForState(c *gin.Context) {
 
 func getWeather(c *gin.Context) {
 	var weatherResponse WeatherResponse
-	wg.Add(3)
+	coordsChannel := make(chan string)
+	locationChannel := make(chan LocationResponse)
+	alertsChannel := make(chan AlertResponse)
+	observationChannel := make(chan Observation)
+
+	wg.Add(4)
 
 	go func(coordsChannel chan string) {
 		coordsChannel <- getCity(c.Param("cityState"))
@@ -86,7 +88,15 @@ func getWeather(c *gin.Context) {
 
 	weatherResponse.AlertResponse = <-alertsChannel
 
-	// get current conditions / observations
+	go func(observationChannel chan Observation) {
+		url := fmt.Sprintf(getLatestObservationsByStation, weatherResponse.LocationResponse.ObservationStation)
+		observations, _ := getCurrentConditions(url)
+		observationChannel <- observations
+		wg.Done()
+	}(observationChannel)
+
+	weatherResponse.Observation = <-observationChannel
+
 	// get hourly forecast
 	// get weekly forecast
 	// get rain chances
@@ -95,9 +105,22 @@ func getWeather(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, weatherResponse)
 }
 
+func getCurrentConditions(url string) (Observation, error) {
+	response, err := getHttpResponse(url)
+	var observationResponse struct {
+		Properties struct {
+			Observation
+		} `json:"properties"`
+	}
+	e := json.Unmarshal(response, &observationResponse)
+	if e != nil {
+		log.Fatal(e.Error())
+	}
+	return observationResponse.Properties.Observation, err
+}
+
 func getCity(c string) string {
 	url := fmt.Sprintf("%v%v&limit=1&appid=%v", geocodeURL, c, apiKey)
-	log.Printf("Get city: %v", url)
 	response, _ := getHttpResponse(url)
 	var cityResponse []struct {
 		Lat  float64 `json:"lat"`
@@ -109,19 +132,9 @@ func getCity(c string) string {
 
 func getLocation(coords string) LocationResponse {
 	url := fmt.Sprintf(getLocationByPoints, coords)
-	log.Printf("Get location url: %v", url)
-
-	response, err := getHttpResponse(url)
-	if err != nil {
-		log.Fatal(err)
-		panic(err)
-	}
-
+	response, _ := getHttpResponse(url)
 	var location LocationDTO
-	if jsonErr := json.Unmarshal(response, &location); jsonErr != nil {
-		log.Fatal(jsonErr)
-		panic(err)
-	}
+	json.Unmarshal(response, &location)
 	return makeLocationResponse(location)
 }
 
@@ -129,11 +142,6 @@ func getAlerts(state string) (AlertResponse, error) {
 	url := fmt.Sprintf("%v/%v", stateAlerts, strings.ToUpper(state))
 	log.Println(url)
 	response, err := getHttpResponse(url)
-
-	if err != nil {
-		log.Fatal(err)
-		return AlertResponse{}, errors.New(err.Error())
-	}
 
 	var alertResponse struct {
 		Updated string  `json:"updated"`
@@ -144,11 +152,12 @@ func getAlerts(state string) (AlertResponse, error) {
 		log.Fatal(jsonErr)
 		return AlertResponse{}, errors.New(jsonErr.Error())
 	}
-	return AlertResponse{Updated: alertResponse.Updated, Alerts: alertResponse.Alerts}, nil
+	return AlertResponse{Updated: alertResponse.Updated, Alerts: alertResponse.Alerts}, err
 }
 
 func getHttpResponse(url string) ([]byte, error) {
 	resp, err := http.Get(url)
+	fmt.Println(url)
 
 	if err != nil {
 		log.Fatal(err)
@@ -156,9 +165,7 @@ func getHttpResponse(url string) ([]byte, error) {
 	}
 
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-
-	return body, err
+	return io.ReadAll(resp.Body)
 }
 
 // Models
@@ -212,6 +219,7 @@ type LocationDTO struct {
 	} `json:"properties,omitempty"`
 
 	ObservationStation string
+	LatestObservations Observation
 }
 
 func (locationDTO *LocationDTO) getObservationStation() string {
@@ -237,31 +245,6 @@ func (locationDTO *LocationDTO) getObservationStation() string {
 	station := response.Features[0].Properties.StationId
 	locationDTO.ObservationStation = station
 	return station
-}
-
-func (locationDTO *LocationDTO) toString() string {
-	str := ""
-
-	str += fmt.Sprintf("Id: %v\n", locationDTO.Id)
-	str += fmt.Sprintf("CountyWarningArea: %v\n", locationDTO.Properties.CountyWarningArea)
-	str += fmt.Sprintf("GridId: %v\n", locationDTO.Properties.GridId)
-	str += fmt.Sprintf("GridX: %v\n", locationDTO.Properties.GridX)
-	str += fmt.Sprintf("GridY: %v\n", locationDTO.Properties.GridY)
-	str += fmt.Sprintf("ObservationStationsUrl: %v\n", locationDTO.Properties.ObservationStationsUrl)
-	str += fmt.Sprintf("Coordinates: %v\n", locationDTO.Properties.RelativeLocation.Geometry.Coordinates)
-	str += fmt.Sprintf("City: %v\n", locationDTO.Properties.RelativeLocation.Properties.City)
-	str += fmt.Sprintf("State: %v\n", locationDTO.Properties.RelativeLocation.Properties.State)
-	str += fmt.Sprintf("ForecastGridDataUrl: %v\n", locationDTO.Properties.ForecastGridDataUrl)
-	str += fmt.Sprintf("ForecastUrl: %v\n", locationDTO.Properties.ForecastUrl)
-	str += fmt.Sprintf("HourlyForecastUrl: %v\n", locationDTO.Properties.HourlyForecastUrl)
-	str += fmt.Sprintf("TimeZone: %v\n", locationDTO.Properties.TimeZone)
-	str += fmt.Sprintf("County: %v\n", locationDTO.Properties.County)
-	str += fmt.Sprintf("ZoneForecast: %v\n", locationDTO.Properties.ZoneForecast)
-	str += fmt.Sprintf("FireWeatherZone: %v\n", locationDTO.Properties.FireWeatherZone)
-	str += fmt.Sprintf("RadarStationUrl: %v\n", locationDTO.Properties.RadarStationUrl)
-	str += fmt.Sprintf("ObservationStation: %v\n", locationDTO.getObservationStation())
-
-	return str
 }
 
 // end : LocationDTO
@@ -373,9 +356,51 @@ func (f *DailyForecast) SetNight(temp int, icon string) {
 
 // end: DailyForecast
 
+type Observation struct {
+	TextDescription string `json:"textDescription,omitempty"`
+	Icon            string `json:"icon,omitempty"`
+	Temperature     struct {
+		UnitCode string  `json:"unitCode"`
+		Value    float64 `json:"value,omitempty"`
+	} `json:"temperature,omitempty"`
+	Dewpoint struct {
+		UnitCode string  `json:"unitCode"`
+		Value    float64 `json:"value,omitempty"`
+	} `json:"dewpoint,omitempty"`
+	WindDirection struct {
+		UnitCode string  `json:"unitCode"`
+		Value    float64 `json:"value,omitempty"`
+	} `json:"windDirection,omitempty"`
+	WindSpeed struct {
+		UnitCode string  `json:"unitCode"`
+		Value    float64 `json:"value,omitempty"`
+	} `json:"windSpeed,omitempty"`
+	WindGust struct {
+		UnitCode string  `json:"unitCode"`
+		Value    float64 `json:"value,omitempty"`
+	} `json:"windGust,omitempty"`
+	Visibility struct {
+		UnitCode string  `json:"unitCode"`
+		Value    float64 `json:"value,omitempty"`
+	} `json:"visibility,omitempty"`
+	RelativeHumidity struct {
+		UnitCode string  `json:"unitCode"`
+		Value    float64 `json:"value,omitempty"`
+	} `json:"relativeHumidity,omitempty"`
+	WindChill struct {
+		UnitCode string  `json:"unitCode"`
+		Value    float64 `json:"value,omitempty"`
+	} `json:"windChill,omitempty"`
+	HeatIndex struct {
+		UnitCode string  `json:"unitCode"`
+		Value    float64 `json:"value,omitempty"`
+	} `json:"heatIndex,omitempty"`
+}
+
 type WeatherResponse struct {
 	AlertResponse
 	LocationResponse
-	Hourly []Period
-	Weekly []DailyForecast
+	Hourly      []Period        `json:"hourly"`
+	Weekly      []DailyForecast `json:"weekly"`
+	Observation `json:"latest_observations"`
 }
