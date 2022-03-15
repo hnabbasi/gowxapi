@@ -23,7 +23,12 @@ const (
 	apiKey                         = "297532c551bed3f6704e6d6db1ff7b64"
 )
 
-var wg = sync.WaitGroup{}
+var (
+	wg              = sync.WaitGroup{}
+	coordsChannel   = make(chan string)
+	locationChannel = make(chan LocationResponse)
+	alertsChannel   = make(chan AlertResponse)
+)
 
 func main() {
 	setupServer()
@@ -45,19 +50,41 @@ func home(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, "Welcome to Hussain's Weather API")
 }
 
+func getAlertsForState(c *gin.Context) {
+	state := c.Param("state")
+
+	alerts, err := getAlerts(state)
+
+	if err != nil {
+		c.IndentedJSON(http.StatusBadRequest, "Could not fetch alerts")
+	}
+
+	c.IndentedJSON(http.StatusOK, alerts)
+}
+
 func getWeather(c *gin.Context) {
 	var weatherResponse WeatherResponse
-	wg.Add(1)
+	wg.Add(3)
 
-	coords, err := getCity(c.Param("cityState"))
-	if err != nil {
-		c.IndentedJSON(http.StatusBadRequest, err.Error())
-	}
-	// get location details
-	go getLocation(coords, &weatherResponse)
-	// if err != nil {
-	// 	c.IndentedJSON(http.StatusBadRequest, fmt.Sprintf("Location not found for %v", c.Param("cityState")))
-	// }
+	go func(coordsChannel chan string) {
+		coordsChannel <- getCity(c.Param("cityState"))
+		wg.Done()
+	}(coordsChannel)
+
+	go func(locationChannel chan LocationResponse) {
+		locationChannel <- getLocation(<-coordsChannel)
+		wg.Done()
+	}(locationChannel)
+
+	weatherResponse.LocationResponse = <-locationChannel
+
+	go func(alertsChannel chan AlertResponse) {
+		alerts, _ := getAlerts(weatherResponse.LocationResponse.State)
+		alertsChannel <- alerts
+		wg.Done()
+	}(alertsChannel)
+
+	weatherResponse.AlertResponse = <-alertsChannel
 
 	// get current conditions / observations
 	// get hourly forecast
@@ -68,58 +95,44 @@ func getWeather(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, weatherResponse)
 }
 
-func getCity(c string) (string, error) {
+func getCity(c string) string {
 	url := fmt.Sprintf("%v%v&limit=1&appid=%v", geocodeURL, c, apiKey)
 	log.Printf("Get city: %v", url)
-	response, err := getHttpResponse(url)
-	if err != nil {
-		log.Fatal(err)
-		return "", errors.New(err.Error())
-	}
-
+	response, _ := getHttpResponse(url)
 	var cityResponse []struct {
 		Lat  float64 `json:"lat"`
 		Long float64 `json:"lon"`
 	}
-
-	if e := json.Unmarshal(response, &cityResponse); e != nil {
-		log.Fatal(e)
-		return "", errors.New(err.Error())
-	}
-	return fmt.Sprintf("%v,%v", cityResponse[0].Lat, cityResponse[0].Long), nil
+	json.Unmarshal(response, &cityResponse)
+	return fmt.Sprintf("%v,%v", cityResponse[0].Lat, cityResponse[0].Long)
 }
 
-func getLocation(coords string, weatherResponse *WeatherResponse) {
+func getLocation(coords string) LocationResponse {
 	url := fmt.Sprintf(getLocationByPoints, coords)
 	log.Printf("Get location url: %v", url)
 
 	response, err := getHttpResponse(url)
 	if err != nil {
 		log.Fatal(err)
-		// return LocationResponse{}, errors.New(err.Error())
+		panic(err)
 	}
 
 	var location LocationDTO
 	if jsonErr := json.Unmarshal(response, &location); jsonErr != nil {
 		log.Fatal(jsonErr)
-		// return LocationResponse{}, errors.New(err.Error())
+		panic(err)
 	}
-
-	// return makeLocationResponse(location), nil
-	weatherResponse.LocationResponse = makeLocationResponse(location)
-	wg.Done()
+	return makeLocationResponse(location)
 }
 
-func getAlertsForState(c *gin.Context) {
-	state := c.Param("state")
+func getAlerts(state string) (AlertResponse, error) {
 	url := fmt.Sprintf("%v/%v", stateAlerts, strings.ToUpper(state))
 	log.Println(url)
-
 	response, err := getHttpResponse(url)
 
 	if err != nil {
 		log.Fatal(err)
-		c.IndentedJSON(http.StatusInternalServerError, "Could not get response")
+		return AlertResponse{}, errors.New(err.Error())
 	}
 
 	var alertResponse struct {
@@ -129,12 +142,9 @@ func getAlertsForState(c *gin.Context) {
 
 	if jsonErr := json.Unmarshal(response, &alertResponse); jsonErr != nil {
 		log.Fatal(jsonErr)
-		c.IndentedJSON(http.StatusInternalServerError, "Could not get alerts")
+		return AlertResponse{}, errors.New(jsonErr.Error())
 	}
-
-	c.IndentedJSON(http.StatusOK, AlertResponse{
-		Updated: alertResponse.Updated,
-		Alerts:  alertResponse.Alerts})
+	return AlertResponse{Updated: alertResponse.Updated, Alerts: alertResponse.Alerts}, nil
 }
 
 func getHttpResponse(url string) ([]byte, error) {
@@ -150,6 +160,8 @@ func getHttpResponse(url string) ([]byte, error) {
 
 	return body, err
 }
+
+// Models
 
 type Alert struct {
 	Id         string `json:"id,omitempty"`
@@ -168,6 +180,8 @@ type AlertResponse struct {
 	Updated string  `json:"updated"`
 	Alerts  []Alert `json:"alerts"`
 }
+
+// begin: LocationDTO
 
 type LocationDTO struct {
 	Id         string `json:"id,omitempty"`
@@ -250,6 +264,9 @@ func (locationDTO *LocationDTO) toString() string {
 	return str
 }
 
+// end : LocationDTO
+// begin: LocationResponse
+
 type LocationResponse struct {
 	Id                     string    `json:"id"`
 	City                   string    `json:"city"`
@@ -293,6 +310,7 @@ func makeLocationResponse(locationDTO LocationDTO) LocationResponse {
 		ObservationStation:     locationDTO.getObservationStation()}
 }
 
+// end: LocationResponse
 // begin: Period
 
 type Period struct {
