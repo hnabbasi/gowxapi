@@ -7,11 +7,13 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -20,7 +22,6 @@ const (
 	stateAlerts                    = baseURL + "/alerts/active/area"
 	getLatestObservationsByStation = baseURL + "/stations/%v/observations/latest"
 	getLocationByPoints            = baseURL + "/points/%v"
-	apiKey                         = "297532c551bed3f6704e6d6db1ff7b64"
 )
 
 var (
@@ -28,7 +29,14 @@ var (
 )
 
 func main() {
+	loadEnv()
 	setupServer()
+}
+
+func loadEnv() {
+	if err := godotenv.Load("../.env"); err != nil {
+		log.Fatal(err.Error)
+	}
 }
 
 func setupServer() {
@@ -120,7 +128,7 @@ func getCurrentConditions(url string) (Observation, error) {
 }
 
 func getCity(c string) string {
-	url := fmt.Sprintf("%v%v&limit=1&appid=%v", geocodeURL, c, apiKey)
+	url := fmt.Sprintf("%v%v&limit=1&appid=%v", geocodeURL, c, os.Getenv("API_KEY"))
 	response, _ := getHttpResponse(url)
 	var cityResponse []struct {
 		Lat  float64 `json:"lat"`
