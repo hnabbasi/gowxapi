@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +21,7 @@ const (
 	baseURL                        = "https://api.weather.gov"
 	geocodeURL                     = "http://api.openweathermap.org/geo/1.0/direct?q="
 	stateAlerts                    = baseURL + "/alerts/active/area"
-	getLatestObservationsByStation = baseURL + "/stations/%v/observations/latest"
+	getLatestObservationsByStation = baseURL + "/stations/%v/observations/latest?require_qc=true"
 	getLocationByPoints            = baseURL + "/points/%v"
 )
 
@@ -35,7 +36,7 @@ func main() {
 
 func loadEnv() {
 	if err := godotenv.Load("../.env"); err != nil {
-		log.Fatal(err.Error)
+		log.Fatal(err.Error())
 	}
 }
 
@@ -52,7 +53,7 @@ func setupRoutes(router *gin.Engine) {
 }
 
 func home(c *gin.Context) {
-	c.IndentedJSON(http.StatusOK, "Welcome to Hussain's Weather API")
+	c.IndentedJSON(http.StatusOK, "\u26c5 Welcome to Hussain's Weather API")
 }
 
 func getAlertsForState(c *gin.Context) {
@@ -74,8 +75,9 @@ func getWeather(c *gin.Context) {
 	alertsChannel := make(chan AlertResponse)
 	observationChannel := make(chan Observation)
 	periodsChannel := make(chan []Period)
+	weeklyChannel := make(chan []DailyForecast)
 
-	wg.Add(5)
+	wg.Add(6)
 
 	go func(coordsChannel chan string) {
 		coordsChannel <- getCity(c.Param("cityState"))
@@ -103,28 +105,61 @@ func getWeather(c *gin.Context) {
 	}(observationChannel)
 	weatherResponse.Observation = <-observationChannel
 
-	// get hourly forecast
-
 	go func(periodsChannel chan []Period) {
-		hourly, _ := getPeriods(weatherResponse.LocationResponse.HourlyForecastUrl)
+		hourly, _ := getPeriods(weatherResponse.LocationResponse.HourlyForecastUrl, 24)
 		periodsChannel <- hourly
 		wg.Done()
 	}(periodsChannel)
 	weatherResponse.Hourly = <-periodsChannel
-	// get weekly forecast
-	// go func(periodsChannel chan []Period) {
-	// 	weekly, _ := getPeriods(weatherResponse.LocationResponse.ForecastUrl)
-	// 	periodsChannel <- weekly
-	// 	wg.Done()
-	// }(periodsChannel)
-	// weatherResponse.Weekly = <-periodsChannel
-	// get rain chances
+
+	go func(weeklyChannel chan []DailyForecast) {
+		weekly, _ := getWeekly(weatherResponse.LocationResponse.ForecastUrl)
+		weeklyChannel <- weekly
+		wg.Done()
+	}(weeklyChannel)
+	weatherResponse.Weekly = <-weeklyChannel
+
+	// TODO: get rain chances
 
 	wg.Wait()
 	c.IndentedJSON(http.StatusOK, weatherResponse)
 }
 
-func getPeriods(url string) ([]Period, error) {
+func getWeekly(url string) ([]DailyForecast, error) {
+	response, err := getPeriods(url, 0)
+
+	dailyMap := make(map[int]DailyForecast)
+
+	for _, period := range response {
+		day, exists := dailyMap[period.StartTime.Day()]
+
+		if !exists {
+			day = DailyForecast{Date: period.StartTime, TemperatureUnit: "F"}
+		}
+
+		if period.IsDaytime {
+			day.DayTemp = period.Temperature
+			day.DayIcon = period.Icon
+		} else {
+			day.NightTemp = period.Temperature
+			day.NightIcon = period.Icon
+		}
+
+		dailyMap[period.StartTime.Day()] = day
+	}
+
+	weekly := []DailyForecast{}
+	for _, forecast := range dailyMap {
+		weekly = append(weekly, forecast)
+		log.Println(weekly)
+	}
+	sort.SliceStable(weekly, func(i, j int) bool {
+		return weekly[i].Date.Day() < weekly[j].Date.Day()
+	})
+	return weekly, err
+}
+
+func getPeriods(url string, count int) ([]Period, error) {
 	response, err := getHttpResponse(url)
 	var periodsResponse struct {
 		Properties struct {
@@ -135,7 +170,11 @@ func getPeriods(url string) ([]Period, error) {
 	if e != nil {
 		log.Fatal(e.Error())
 	}
-	return periodsResponse.Properties.Period, err
+	if count > 0 {
+		return periodsResponse.Properties.Period[:count], err
+	} else {
+		return periodsResponse.Properties.Period, err
+	}
 }
 
 func getCurrentConditions(url string) (Observation, error) {
@@ -177,8 +216,8 @@ func getAlerts(state string) (AlertResponse, error) {
 	response, err := getHttpResponse(url)
 
 	var alertResponse struct {
-		Updated string  `json:"updated"`
-		Alerts  []Alert `json:"features"`
+		Updated time.Time `json:"updated"`
+		Alerts  []Alert   `json:"features"`
 	}
 
 	if jsonErr := json.Unmarshal(response, &alertResponse); jsonErr != nil {
@@ -206,19 +245,19 @@ func getHttpResponse(url string) ([]byte, error) {
 type Alert struct {
 	Id         string `json:"id,omitempty"`
 	Properties struct {
-		Event         string `json:"event,omitempty"`
-		Status        string `json:"status,omitempty"`
-		Effective     string `json:"effective,omitempty"`
-		Expires       string `json:"expires,omitempty"`
-		Severity      string `json:"severity,omitempty"`
-		Headline      string `json:"headline,omitempty"`
-		AffectedAreas string `json:"areaDesc,omitempty"`
+		Event         string    `json:"event,omitempty"`
+		Status        string    `json:"status,omitempty"`
+		Effective     time.Time `json:"effective,omitempty"`
+		Expires       time.Time `json:"expires,omitempty"`
+		Severity      string    `json:"severity,omitempty"`
+		Headline      string    `json:"headline,omitempty"`
+		AffectedAreas string    `json:"areaDesc,omitempty"`
 	} `json:"properties,omitempty"`
 }
 
 type AlertResponse struct {
-	Updated string  `json:"updated"`
-	Alerts  []Alert `json:"alerts"`
+	Updated time.Time `json:"updated"`
+	Alerts  []Alert   `json:"alerts"`
 }
 
 // begin: LocationDTO
@@ -330,19 +369,19 @@ func makeLocationResponse(locationDTO LocationDTO) LocationResponse {
 // begin: Period
 
 type Period struct {
-	Number           int    `json:"number,omitempty"`
-	Name             string `json:"name,omitempty"`
-	StartTime        string `json:"startTime,omitempty"`
-	EndTime          string `json:"endTime,omitempty"`
-	IsDaytime        bool   `json:"isDayTime,omitempty"`
-	Temperature      int    `json:"temperature,omitempty"`
-	TemperatureUnit  string `json:"temperatureUnit,omitempty"`
-	TemperatureTrend string `json:"temperatureTrend,omitempty"`
-	WindSpeed        string `json:"windSpeed,omitempty"`
-	WindDirection    string `json:"windDirection,omitempty"`
-	Icon             string `json:"icon,omitempty"`
-	ShortForecast    string `json:"shortForecast,omitempty"`
-	DetailedForecast string `json:"detailedForecast,omitempty"`
+	Number           int       `json:"number,omitempty"`
+	Name             string    `json:"name,omitempty"`
+	StartTime        time.Time `json:"startTime,omitempty"`
+	EndTime          time.Time `json:"endTime,omitempty"`
+	IsDaytime        bool      `json:"isDayTime,omitempty"`
+	Temperature      int       `json:"temperature,omitempty"`
+	TemperatureUnit  string    `json:"temperatureUnit,omitempty"`
+	TemperatureTrend string    `json:"temperatureTrend,omitempty"`
+	WindSpeed        string    `json:"windSpeed,omitempty"`
+	WindDirection    string    `json:"windDirection,omitempty"`
+	Icon             string    `json:"icon,omitempty"`
+	ShortForecast    string    `json:"shortForecast,omitempty"`
+	DetailedForecast string    `json:"detailedForecast,omitempty"`
 }
 
 func (p Period) GetWeatherString() string {
@@ -361,30 +400,12 @@ func (p Period) GetWeatherString() string {
 // begin: DailyForecast
 
 type DailyForecast struct {
-	Date      time.Time
-	DayTemp   int
-	DayIcon   string
-	NightTemp int
-	NightIcon string
-}
-
-func (f *DailyForecast) getName() string {
-	if f.Date.Day() == time.Now().Day() {
-		return "Today"
-	} else {
-		return f.Date.Format("dddd")
-	}
-
-}
-
-func (f *DailyForecast) SetDay(temp int, icon string) {
-	f.DayTemp = temp
-	f.DayIcon = icon
-}
-
-func (f *DailyForecast) SetNight(temp int, icon string) {
-	f.NightTemp = temp
-	f.NightIcon = icon
+	Date            time.Time
+	TemperatureUnit string
+	DayTemp         int
+	DayIcon         string
+	NightTemp       int
+	NightIcon       string
 }
 
 // end: DailyForecast
