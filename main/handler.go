@@ -126,7 +126,8 @@ func getWeather(c *gin.Context) {
 		rainChannel <- rainChances
 		wg.Done()
 	}(rainChannel)
-	weatherResponse.RainChances = <-rainChannel
+	weatherResponse.RainChances.UnitCode = "wmoUnit:percent"
+	weatherResponse.RainChances.Values = <-rainChannel
 
 	// TODO: get rain chances
 
@@ -495,5 +496,8 @@ type WeatherResponse struct {
 	Hourly      []Period        `json:"hourly"`
 	Weekly      []DailyForecast `json:"weekly"`
 	Observation `json:"latest_observations"`
-	RainChances map[int][]int `json:rainChances`
+	RainChances struct {
+		UnitCode string        `json:"unitCode"`
+		Values   map[int][]int `json:"values"`
+	} `json:"rainChances"`
 }
