@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/kaz-yamam0t0/go-timeparser/timeparser"
 )
 
 const (
@@ -76,8 +77,9 @@ func getWeather(c *gin.Context) {
 	observationChannel := make(chan Observation)
 	periodsChannel := make(chan []Period)
 	weeklyChannel := make(chan []DailyForecast)
+	rainChannel := make(chan map[int][]int)
 
-	wg.Add(6)
+	wg.Add(7)
 
 	go func(coordsChannel chan string) {
 		coordsChannel <- getCity(c.Param("cityState"))
@@ -119,10 +121,69 @@ func getWeather(c *gin.Context) {
 	}(weeklyChannel)
 	weatherResponse.Weekly = <-weeklyChannel
 
+	go func(rainChannel chan map[int][]int) {
+		rainChances, _ := getRainChancesMap(weatherResponse.LocationResponse.ForecastGridDataUrl)
+		rainChannel <- rainChances
+		wg.Done()
+	}(rainChannel)
+	weatherResponse.RainChances = <-rainChannel
+
 	// TODO: get rain chances
 
 	wg.Wait()
 	c.IndentedJSON(http.StatusOK, weatherResponse)
+}
+
+func getRainChancesMap(url string) (map[int][]int, error) {
+	response, err := getHttpResponse(url)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	var rainChancesResponse struct {
+		Properties struct {
+			Chances struct {
+				Values []ValueItem `json:"values"`
+			} `json:"probabilityOfPrecipitation"`
+		} `json:"properties"`
+	}
+
+	if e := json.Unmarshal(response, &rainChancesResponse); e != nil {
+		log.Fatal(e.Error())
+	}
+
+	return fillPeriods(rainChancesResponse.Properties.Chances.Values)
+}
+
+func fillPeriods(periods []ValueItem) (map[int][]int, error) {
+	retVal := make(map[int][]int)
+
+	for _, v := range periods {
+		timestampArray := strings.Split(v.ValidTime, "/")
+
+		current, err := time.Parse(time.RFC3339, timestampArray[0])
+		if err != nil {
+			return nil, errors.New(err.Error())
+		}
+
+		end, err := timeparser.ParseTimeStr(timestampArray[1], &current)
+		if err != nil {
+			return nil, errors.New(err.Error())
+		}
+
+		for current.Before(*end) {
+			if _, e := retVal[current.Day()]; !e {
+				retVal[current.Day()] = make([]int, 24)
+			}
+			retVal[current.Day()][current.Hour()] = int(v.Value)
+			current = current.Add(time.Hour)
+		}
+	}
+	return retVal, nil
+}
+
+func periodToDate(period string) time.Time {
+	return time.Now()
 }
 
 func getWeekly(url string) ([]DailyForecast, error) {
@@ -151,7 +212,6 @@ func getWeekly(url string) ([]DailyForecast, error) {
 	weekly := []DailyForecast{}
 	for _, forecast := range dailyMap {
 		weekly = append(weekly, forecast)
-		log.Println(weekly)
 	}
 	sort.SliceStable(weekly, func(i, j int) bool {
 		return weekly[i].Date.Day() < weekly[j].Date.Day()
@@ -212,7 +272,6 @@ func getLocation(coords string) LocationResponse {
 
 func getAlerts(state string) (AlertResponse, error) {
 	url := fmt.Sprintf("%v/%v", stateAlerts, strings.ToUpper(state))
-	log.Println(url)
 	response, err := getHttpResponse(url)
 
 	var alertResponse struct {
@@ -229,7 +288,7 @@ func getAlerts(state string) (AlertResponse, error) {
 
 func getHttpResponse(url string) ([]byte, error) {
 	resp, err := http.Get(url)
-	fmt.Println(url)
+	log.Println(url)
 
 	if err != nil {
 		log.Fatal(err)
@@ -411,44 +470,23 @@ type DailyForecast struct {
 // end: DailyForecast
 
 type Observation struct {
-	TextDescription string `json:"textDescription,omitempty"`
-	Icon            string `json:"icon,omitempty"`
-	Temperature     struct {
-		UnitCode string  `json:"unitCode"`
-		Value    float64 `json:"value,omitempty"`
-	} `json:"temperature,omitempty"`
-	Dewpoint struct {
-		UnitCode string  `json:"unitCode"`
-		Value    float64 `json:"value,omitempty"`
-	} `json:"dewpoint,omitempty"`
-	WindDirection struct {
-		UnitCode string  `json:"unitCode"`
-		Value    float64 `json:"value,omitempty"`
-	} `json:"windDirection,omitempty"`
-	WindSpeed struct {
-		UnitCode string  `json:"unitCode"`
-		Value    float64 `json:"value,omitempty"`
-	} `json:"windSpeed,omitempty"`
-	WindGust struct {
-		UnitCode string  `json:"unitCode"`
-		Value    float64 `json:"value,omitempty"`
-	} `json:"windGust,omitempty"`
-	Visibility struct {
-		UnitCode string  `json:"unitCode"`
-		Value    float64 `json:"value,omitempty"`
-	} `json:"visibility,omitempty"`
-	RelativeHumidity struct {
-		UnitCode string  `json:"unitCode"`
-		Value    float64 `json:"value,omitempty"`
-	} `json:"relativeHumidity,omitempty"`
-	WindChill struct {
-		UnitCode string  `json:"unitCode"`
-		Value    float64 `json:"value,omitempty"`
-	} `json:"windChill,omitempty"`
-	HeatIndex struct {
-		UnitCode string  `json:"unitCode"`
-		Value    float64 `json:"value,omitempty"`
-	} `json:"heatIndex,omitempty"`
+	TextDescription  string    `json:"textDescription,omitempty"`
+	Icon             string    `json:"icon,omitempty"`
+	Temperature      ValueItem `json:"temperature,omitempty"`
+	Dewpoint         ValueItem `json:"dewpoint,omitempty"`
+	WindDirection    ValueItem `json:"windDirection,omitempty"`
+	WindSpeed        ValueItem `json:"windSpeed,omitempty"`
+	WindGust         ValueItem `json:"windGust,omitempty"`
+	Visibility       ValueItem `json:"visibility,omitempty"`
+	RelativeHumidity ValueItem `json:"relativeHumidity,omitempty"`
+	WindChill        ValueItem `json:"windChill,omitempty"`
+	HeatIndex        ValueItem `json:"heatIndex,omitempty"`
+}
+
+type ValueItem struct {
+	UnitCode  string  `json:"unitCode,omitempty"`
+	ValidTime string  `json:"validTime,omitempty"`
+	Value     float64 `json:"value,omitempty"`
 }
 
 type WeatherResponse struct {
@@ -457,4 +495,5 @@ type WeatherResponse struct {
 	Hourly      []Period        `json:"hourly"`
 	Weekly      []DailyForecast `json:"weekly"`
 	Observation `json:"latest_observations"`
+	RainChances map[int][]int `json:rainChances`
 }
