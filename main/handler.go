@@ -183,10 +183,6 @@ func fillPeriods(periods []ValueItem) (map[int][]int, error) {
 	return retVal, nil
 }
 
-func periodToDate(period string) time.Time {
-	return time.Now()
-}
-
 func getWeekly(url string) ([]DailyForecast, error) {
 	response, err := getPeriods(url, 0)
 
@@ -289,7 +285,7 @@ func getAlerts(state string) (AlertResponse, error) {
 
 func getHttpResponse(url string) ([]byte, error) {
 	resp, err := http.Get(url)
-	log.Println(url)
+	//log.Println(url)
 
 	if err != nil {
 		log.Fatal(err)
