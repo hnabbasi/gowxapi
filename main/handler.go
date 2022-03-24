@@ -24,7 +24,7 @@ const (
 	stateAlerts                    = baseURL + "/alerts/active/area"
 	getLatestObservationsByStation = baseURL + "/stations/%v/observations/latest?require_qc=true"
 	getLocationByPoints            = baseURL + "/points/%v"
-	getProducts0ByLocation1        = baseURL + "/products/types/%v/locations/%v"
+	getAfdByLocation0              = baseURL + "/products/types/AFD/locations/%v"
 )
 
 var (
@@ -72,13 +72,14 @@ func getAlertsForState(c *gin.Context) {
 
 func getWeather(c *gin.Context) {
 	var weatherResponse WeatherResponse
-	stringsChannel := make(chan string)
+	coordsChannel := make(chan string)
 	locationChannel := make(chan LocationResponse)
 	alertsChannel := make(chan AlertResponse)
 	observationChannel := make(chan Observation)
 	periodsChannel := make(chan []Period)
 	weeklyChannel := make(chan []DailyForecast)
 	rainChannel := make(chan map[string][]int)
+	productChannel := make(chan Product)
 
 	wg.Add(8)
 
@@ -86,14 +87,14 @@ func getWeather(c *gin.Context) {
 		cityCoords, err := getCity(c.Param("cityState"))
 		if err != nil {
 			c.IndentedJSON(http.StatusBadRequest, err.Error())
-			wg.Done()
+		} else {
+			coordsChannel <- cityCoords
 		}
-		coordsChannel <- cityCoords
 		wg.Done()
-	}(stringsChannel)
+	}(coordsChannel)
 
 	go func(locationChannel chan LocationResponse) {
-		locationChannel <- getLocation(<-stringsChannel)
+		locationChannel <- getLocation(<-coordsChannel)
 		wg.Done()
 	}(locationChannel)
 	weatherResponse.LocationResponse = <-locationChannel
@@ -138,13 +139,45 @@ func getWeather(c *gin.Context) {
 	weatherResponse.RainChances.UnitCode = "wmoUnit:percent"
 	weatherResponse.RainChances.Values = <-rainChannel
 
-	go func(stringsChannel chan string) {
-		//TODO
+	go func(productChannel chan Product) {
+		product, _ := getAfdProduct(fmt.Sprintf(getAfdByLocation0, weatherResponse.CountyWarningArea))
+		productChannel <- product
 		wg.Done()
-	}(stringsChannel)
+	}(productChannel)
+	weatherResponse.AreaForecastDiscussion = <-productChannel
 
 	wg.Wait()
 	c.IndentedJSON(http.StatusOK, weatherResponse)
+}
+
+func getAfdProduct(url string) (Product, error) {
+	response, err := getHttpResponse(url)
+	if err != nil {
+		log.Fatal(err)
+		return Product{}, err
+	}
+
+	var allProductsResponse struct {
+		Graph []struct {
+			Id string `json:"@id"`
+		} `json:"@graph"`
+	}
+
+	if er := json.Unmarshal(response, &allProductsResponse); er != nil {
+		return Product{}, er
+	}
+	productResponse, err := getHttpResponse(allProductsResponse.Graph[0].Id)
+
+	if err != nil {
+		return Product{}, err
+	}
+
+	var product Product
+	if err = json.Unmarshal(productResponse, &product); err != nil {
+		return Product{}, err
+	}
+
+	return product, nil
 }
 
 func getRainChancesMap(url string) (map[string][]int, error) {
@@ -510,6 +543,12 @@ type ValueItem struct {
 	Value     float64 `json:"value,omitempty"`
 }
 
+type Product struct {
+	Id           string `json:"@id"`
+	IssuanceTime string `json:"issuanceTime"`
+	Text         string `json:"productText"`
+}
+
 type WeatherResponse struct {
 	AlertResponse
 	LocationResponse
@@ -520,5 +559,5 @@ type WeatherResponse struct {
 		UnitCode string           `json:"unitCode"`
 		Values   map[string][]int `json:"values"`
 	} `json:"rainChances"`
-	AreaForecastDiscussion string `json:"areaForecastDiscussion"`
+	AreaForecastDiscussion Product `json:"areaForecastDiscussion"`
 }
