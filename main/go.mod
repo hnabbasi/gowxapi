@@ -1,13 +1,11 @@
-module hnabbasi/wxapi
+module github.com/hnabbasi/gowxapi
 
-go 1.17
+go 1.18
 
 require (
 	github.com/gin-gonic/gin v1.7.7
 	github.com/joho/godotenv v1.4.0
 )
-
-require github.com/stretchr/testify v1.7.0 // indirect
 
 require (
 	github.com/gin-contrib/sse v0.1.0 // indirect
