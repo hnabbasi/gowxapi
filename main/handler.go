@@ -24,6 +24,7 @@ const (
 	stateAlerts                    = baseURL + "/alerts/active/area"
 	getLatestObservationsByStation = baseURL + "/stations/%v/observations/latest?require_qc=true"
 	getLocationByPoints            = baseURL + "/points/%v"
+	getProducts0ByLocation1        = baseURL + "/products/types/%v/locations/%v"
 )
 
 var (
@@ -36,7 +37,7 @@ func main() {
 }
 
 func loadEnv() {
-	if err := godotenv.Load("../.env"); err != nil {
+	if err := godotenv.Load("../local.env"); err != nil {
 		log.Fatal(err.Error())
 	}
 }
@@ -71,29 +72,37 @@ func getAlertsForState(c *gin.Context) {
 
 func getWeather(c *gin.Context) {
 	var weatherResponse WeatherResponse
-	coordsChannel := make(chan string)
+	stringsChannel := make(chan string)
 	locationChannel := make(chan LocationResponse)
 	alertsChannel := make(chan AlertResponse)
 	observationChannel := make(chan Observation)
 	periodsChannel := make(chan []Period)
 	weeklyChannel := make(chan []DailyForecast)
-	rainChannel := make(chan map[int][]int)
+	rainChannel := make(chan map[string][]int)
 
-	wg.Add(7)
+	wg.Add(8)
 
 	go func(coordsChannel chan string) {
-		coordsChannel <- getCity(c.Param("cityState"))
+		cityCoords, err := getCity(c.Param("cityState"))
+		if err != nil {
+			c.IndentedJSON(http.StatusBadRequest, err.Error())
+			wg.Done()
+		}
+		coordsChannel <- cityCoords
 		wg.Done()
-	}(coordsChannel)
+	}(stringsChannel)
 
 	go func(locationChannel chan LocationResponse) {
-		locationChannel <- getLocation(<-coordsChannel)
+		locationChannel <- getLocation(<-stringsChannel)
 		wg.Done()
 	}(locationChannel)
 	weatherResponse.LocationResponse = <-locationChannel
 
 	go func(alertsChannel chan AlertResponse) {
-		alerts, _ := getAlerts(weatherResponse.LocationResponse.State)
+		alerts, err := getAlerts(weatherResponse.LocationResponse.State)
+		if err != nil {
+			c.IndentedJSON(http.StatusBadRequest, err.Error())
+		}
 		alertsChannel <- alerts
 		wg.Done()
 	}(alertsChannel)
@@ -121,7 +130,7 @@ func getWeather(c *gin.Context) {
 	}(weeklyChannel)
 	weatherResponse.Weekly = <-weeklyChannel
 
-	go func(rainChannel chan map[int][]int) {
+	go func(rainChannel chan map[string][]int) {
 		rainChances, _ := getRainChancesMap(weatherResponse.LocationResponse.ForecastGridDataUrl)
 		rainChannel <- rainChances
 		wg.Done()
@@ -129,13 +138,16 @@ func getWeather(c *gin.Context) {
 	weatherResponse.RainChances.UnitCode = "wmoUnit:percent"
 	weatherResponse.RainChances.Values = <-rainChannel
 
-	// TODO: get rain chances
+	go func(stringsChannel chan string) {
+		//TODO
+		wg.Done()
+	}(stringsChannel)
 
 	wg.Wait()
 	c.IndentedJSON(http.StatusOK, weatherResponse)
 }
 
-func getRainChancesMap(url string) (map[int][]int, error) {
+func getRainChancesMap(url string) (map[string][]int, error) {
 	response, err := getHttpResponse(url)
 	if err != nil {
 		log.Fatal(err.Error())
@@ -156,8 +168,8 @@ func getRainChancesMap(url string) (map[int][]int, error) {
 	return fillPeriods(rainChancesResponse.Properties.Chances.Values)
 }
 
-func fillPeriods(periods []ValueItem) (map[int][]int, error) {
-	retVal := make(map[int][]int)
+func fillPeriods(periods []ValueItem) (map[string][]int, error) {
+	retVal := make(map[string][]int)
 
 	for _, v := range periods {
 		timestampArray := strings.Split(v.ValidTime, "/")
@@ -173,10 +185,11 @@ func fillPeriods(periods []ValueItem) (map[int][]int, error) {
 		}
 
 		for current.Before(*end) {
-			if _, e := retVal[current.Day()]; !e {
-				retVal[current.Day()] = make([]int, 24)
+			key := strings.Split(current.String(), " ")[0]
+			if _, e := retVal[key]; !e {
+				retVal[key] = make([]int, 24)
 			}
-			retVal[current.Day()][current.Hour()] = int(v.Value)
+			retVal[key][current.Hour()] = int(v.Value)
 			current = current.Add(time.Hour)
 		}
 	}
@@ -248,15 +261,20 @@ func getCurrentConditions(url string) (Observation, error) {
 	return observationResponse.Properties.Observation, err
 }
 
-func getCity(c string) string {
+func getCity(c string) (string, error) {
 	url := fmt.Sprintf("%v%v&limit=1&appid=%v", geocodeURL, c, os.Getenv("API_KEY"))
-	response, _ := getHttpResponse(url)
+	response, err := getHttpResponse(url)
+
+	if err != nil {
+		return "", err
+	}
+
 	var cityResponse []struct {
 		Lat  float64 `json:"lat"`
 		Long float64 `json:"lon"`
 	}
 	json.Unmarshal(response, &cityResponse)
-	return fmt.Sprintf("%v,%v", cityResponse[0].Lat, cityResponse[0].Long)
+	return fmt.Sprintf("%v,%v", cityResponse[0].Lat, cityResponse[0].Long), nil
 }
 
 func getLocation(coords string) LocationResponse {
@@ -285,15 +303,21 @@ func getAlerts(state string) (AlertResponse, error) {
 
 func getHttpResponse(url string) ([]byte, error) {
 	resp, err := http.Get(url)
-	//log.Println(url)
+	log.Println(url)
 
 	if err != nil {
 		log.Fatal(err)
-		return nil, errors.New(err.Error())
+		return nil, err
 	}
 
 	defer resp.Body.Close()
-	return io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New(string(body))
+	} else {
+		return body, nil
+	}
 }
 
 // Models
@@ -491,9 +515,10 @@ type WeatherResponse struct {
 	LocationResponse
 	Hourly      []Period        `json:"hourly"`
 	Weekly      []DailyForecast `json:"weekly"`
-	Observation `json:"latest_observations"`
+	Observation `json:"latestObservations"`
 	RainChances struct {
-		UnitCode string        `json:"unitCode"`
-		Values   map[int][]int `json:"values"`
+		UnitCode string           `json:"unitCode"`
+		Values   map[string][]int `json:"values"`
 	} `json:"rainChances"`
+	AreaForecastDiscussion string `json:"areaForecastDiscussion"`
 }
