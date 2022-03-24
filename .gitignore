@@ -16,3 +16,6 @@
 
 # VS Code
 .vscode/
+
+# Local env
+local.env
