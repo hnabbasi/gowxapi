@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -45,7 +46,18 @@ func loadEnv() {
 func setupServer() {
 	router := gin.Default()
 	setupRoutes(router)
-	router.Run("localhost:8080")
+
+	port, e := strconv.Atoi(os.Getenv("PORT"))
+	if e != nil {
+		port = 8080
+	}
+
+	server := os.Getenv("SERVER")
+	if server == "" {
+		server = "localhost"
+	}
+
+	router.Run(fmt.Sprintf("%v:%v", server, port))
 }
 
 func setupRoutes(router *gin.Engine) {
