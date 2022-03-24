@@ -170,16 +170,15 @@ func getAfdProduct(url string) (Product, error) {
 	}
 
 	var allProductsResponse struct {
-		Graph []struct {
+		Graph [1]struct {
 			Id string `json:"@id"`
 		} `json:"@graph"`
 	}
-
 	if er := json.Unmarshal(response, &allProductsResponse); er != nil {
 		return Product{}, er
 	}
-	productResponse, err := getHttpResponse(allProductsResponse.Graph[0].Id)
 
+	productResponse, err := getHttpResponse(string(allProductsResponse.Graph[0].Id))
 	if err != nil {
 		return Product{}, err
 	}
@@ -560,6 +559,8 @@ type Product struct {
 	IssuanceTime string `json:"issuanceTime"`
 	Text         string `json:"productText"`
 }
+
+type Section map[string]json.RawMessage
 
 type WeatherResponse struct {
 	AlertResponse
