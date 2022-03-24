@@ -67,7 +67,7 @@ func setupRoutes(router *gin.Engine) {
 }
 
 func home(c *gin.Context) {
-	c.IndentedJSON(http.StatusOK, "\u26c5 Welcome to Hussain's Weather API")
+	c.JSON(http.StatusOK, "\u26c5 Welcome to Hussain's Weather API")
 }
 
 func getAlertsForState(c *gin.Context) {
@@ -76,10 +76,10 @@ func getAlertsForState(c *gin.Context) {
 	alerts, err := getAlerts(state)
 
 	if err != nil {
-		c.IndentedJSON(http.StatusBadRequest, "Could not fetch alerts")
+		c.JSON(http.StatusBadRequest, "Could not fetch alerts")
 	}
 
-	c.IndentedJSON(http.StatusOK, alerts)
+	c.JSON(http.StatusOK, alerts)
 }
 
 func getWeather(c *gin.Context) {
@@ -98,7 +98,7 @@ func getWeather(c *gin.Context) {
 	go func(coordsChannel chan string) {
 		cityCoords, err := getCity(c.Param("cityState"))
 		if err != nil {
-			c.IndentedJSON(http.StatusBadRequest, err.Error())
+			c.JSON(http.StatusBadRequest, err.Error())
 		} else {
 			coordsChannel <- cityCoords
 		}
@@ -114,7 +114,7 @@ func getWeather(c *gin.Context) {
 	go func(alertsChannel chan AlertResponse) {
 		alerts, err := getAlerts(weatherResponse.LocationResponse.State)
 		if err != nil {
-			c.IndentedJSON(http.StatusBadRequest, err.Error())
+			c.JSON(http.StatusBadRequest, err.Error())
 		}
 		alertsChannel <- alerts
 		wg.Done()
@@ -159,7 +159,7 @@ func getWeather(c *gin.Context) {
 	weatherResponse.AreaForecastDiscussion = <-productChannel
 
 	wg.Wait()
-	c.IndentedJSON(http.StatusOK, weatherResponse)
+	c.JSON(http.StatusOK, weatherResponse)
 }
 
 func getAfdProduct(url string) (Product, error) {
