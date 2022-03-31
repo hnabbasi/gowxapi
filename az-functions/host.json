@@ -16,7 +16,7 @@
   "customHandler": {
 	"enableForwardingHttpRequest":true,
     "description": {
-      "defaultExecutablePath": "../build/api",
+      "defaultExecutablePath": "api",
       "workingDirectory": "",
       "arguments": []
     }
