@@ -19,7 +19,7 @@ import (
 
 const (
 	baseURL                        = "https://api.weather.gov"
-	geocodeURL                     = "http://api.openweathermap.org/geo/1.0/direct?q="
+	geocodeURL01                   = "https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=pjson&singleLine=%v&token=%v"
 	stateAlerts                    = baseURL + "/alerts/active/area"
 	getLatestObservationsByStation = baseURL + "/stations/%v/observations/latest?require_qc=true"
 	getLocationByPoints            = baseURL + "/points/%v"
@@ -59,6 +59,8 @@ func GetAlertsForState(c *gin.Context) {
 // - Area forecast discussion
 func GetWeather(c *gin.Context) {
 	var weatherResponse WeatherResponse
+	errorsChannel := make(chan error)
+	doneChannel := make(chan bool)
 	coordsChannel := make(chan string)
 	locationChannel := make(chan LocationResponse)
 	alertsChannel := make(chan AlertResponse)
@@ -70,71 +72,118 @@ func GetWeather(c *gin.Context) {
 
 	wg.Add(8)
 
-	go func(coordsChannel chan string) {
+	go func(coordsChannel chan string, errorsChannel chan error) {
 		cityCoords, err := getCity(c.Param("cityState"))
 		if err != nil {
-			c.JSON(http.StatusBadRequest, err.Error())
+			log.Fatal(err)
+			errorsChannel <- errors.New(fmt.Sprintf("Could not find city for coords %v.", cityCoords))
 		} else {
 			coordsChannel <- cityCoords
+			close(coordsChannel)
 		}
 		wg.Done()
-	}(coordsChannel)
+	}(coordsChannel, errorsChannel)
 
-	go func(locationChannel chan LocationResponse) {
-		locationChannel <- getLocation(<-coordsChannel)
+	go func(locationChannel chan LocationResponse, errorsChannel chan error) {
+		location, err := getLocation(<-coordsChannel)
+		if err != nil {
+			log.Fatal(err)
+			errorsChannel <- errors.New("Could not find location.")
+		} else {
+			locationChannel <- location
+			close(locationChannel)
+		}
 		wg.Done()
-	}(locationChannel)
+	}(locationChannel, errorsChannel)
 	weatherResponse.LocationResponse = <-locationChannel
 
 	go func(alertsChannel chan AlertResponse) {
 		alerts, err := getAlerts(weatherResponse.LocationResponse.State)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, err.Error())
+			c.JSON(http.StatusBadRequest, errors.New(fmt.Sprintf("Could not pull alerts for %v. Error:%v", weatherResponse.LocationResponse.State, err.Error())))
+		} else {
+			alertsChannel <- alerts
+			close(alertsChannel)
 		}
-		alertsChannel <- alerts
 		wg.Done()
 	}(alertsChannel)
 	weatherResponse.AlertResponse = <-alertsChannel
 
 	go func(observationChannel chan Observation) {
 		url := fmt.Sprintf(getLatestObservationsByStation, weatherResponse.LocationResponse.ObservationStation)
-		observations, _ := getCurrentConditions(url)
-		observationChannel <- observations
+		observations, err := getCurrentConditions(url)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errors.New(fmt.Sprintf("Could not get latest conditions. Error:%v", err.Error())))
+		} else {
+			observationChannel <- observations
+			close(observationChannel)
+		}
 		wg.Done()
 	}(observationChannel)
 	weatherResponse.Observation = <-observationChannel
 
 	go func(periodsChannel chan []Period) {
-		hourly, _ := getPeriods(weatherResponse.LocationResponse.HourlyForecastUrl, 24)
-		periodsChannel <- hourly
+		hourly, err := getPeriods(weatherResponse.LocationResponse.HourlyForecastUrl, 24)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errors.New(fmt.Sprintf("Could not get hourly conditions. Error:%v", err.Error())))
+		} else {
+			periodsChannel <- hourly
+			close(periodsChannel)
+		}
 		wg.Done()
 	}(periodsChannel)
 	weatherResponse.Hourly = <-periodsChannel
 
 	go func(weeklyChannel chan []DailyForecast) {
-		weekly, _ := getWeekly(weatherResponse.LocationResponse.ForecastUrl)
-		weeklyChannel <- weekly
+		weekly, err := getWeekly(weatherResponse.LocationResponse.ForecastUrl)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errors.New(fmt.Sprintf("Could not get weekly conditions. Error:%v", err.Error())))
+		} else {
+			weeklyChannel <- weekly
+			close(weeklyChannel)
+		}
 		wg.Done()
 	}(weeklyChannel)
 	weatherResponse.Weekly = <-weeklyChannel
 
 	go func(rainChannel chan map[string][]int) {
-		rainChances, _ := getRainChancesMap(weatherResponse.LocationResponse.ForecastGridDataUrl)
-		rainChannel <- rainChances
+		rainChances, err := getRainChancesMap(weatherResponse.LocationResponse.ForecastGridDataUrl)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errors.New(fmt.Sprintf("Could not get rain chances. Error:%v", err.Error())))
+		} else {
+			rainChannel <- rainChances
+			close(rainChannel)
+		}
 		wg.Done()
 	}(rainChannel)
 	weatherResponse.RainChances.UnitCode = "wmoUnit:percent"
 	weatherResponse.RainChances.Values = <-rainChannel
 
 	go func(productChannel chan Product) {
-		product, _ := getAfdProduct(fmt.Sprintf(getAfdByLocation0, weatherResponse.CountyWarningArea))
-		productChannel <- product
+		product, err := getAfdProduct(fmt.Sprintf(getAfdByLocation0, weatherResponse.CountyWarningArea))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errors.New(fmt.Sprintf("Could not get forecast discussion. Error:%v", err.Error())))
+		} else {
+			productChannel <- product
+			close(productChannel)
+		}
 		wg.Done()
 	}(productChannel)
 	weatherResponse.AreaForecastDiscussion = <-productChannel
 
-	wg.Wait()
-	c.JSON(http.StatusOK, weatherResponse)
+	go func() {
+		wg.Wait()
+		c.JSON(http.StatusOK, weatherResponse)
+		close(doneChannel)
+	}()
+
+	select {
+	case <-doneChannel:
+		break
+	case err := <-errorsChannel:
+		close(errorsChannel)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
 }
 
 func getAfdProduct(url string) (Product, error) {
@@ -250,60 +299,90 @@ func getWeekly(url string) ([]DailyForecast, error) {
 
 func getPeriods(url string, count int) ([]Period, error) {
 	response, err := getHttpResponse(url)
+
+	if err != nil {
+		return nil, err
+	}
+
 	var periodsResponse struct {
 		Properties struct {
 			Period []Period `json:"periods"`
 		} `json:"properties"`
 	}
-	e := json.Unmarshal(response, &periodsResponse)
-	if e != nil {
-		log.Fatal(e.Error())
+	err = json.Unmarshal(response, &periodsResponse)
+	if err != nil {
+		return nil, err
 	}
+
 	if count > 0 {
-		return periodsResponse.Properties.Period[:count], err
+		return periodsResponse.Properties.Period[:count], nil
 	} else {
-		return periodsResponse.Properties.Period, err
+		return periodsResponse.Properties.Period, nil
 	}
 }
 
 func getCurrentConditions(url string) (Observation, error) {
 	response, err := getHttpResponse(url)
+	if err != nil {
+		return Observation{}, err
+	}
+
 	var observationResponse struct {
 		Properties struct {
 			Observation
 		} `json:"properties"`
 	}
-	e := json.Unmarshal(response, &observationResponse)
-	if e != nil {
-		log.Fatal(e.Error())
+	err = json.Unmarshal(response, &observationResponse)
+	if err != nil {
+		return Observation{}, err
 	}
-	return observationResponse.Properties.Observation, err
+	return observationResponse.Properties.Observation, nil
 }
 
 func getCity(c string) (string, error) {
-	url := fmt.Sprintf("%v%v&limit=1&appid=%v", geocodeURL, c, os.Getenv("API_KEY"))
+	key, ok := os.LookupEnv("API_KEY")
+
+	if !ok {
+		return "", errors.New("API Key for weather service not found")
+	}
+
+	url := fmt.Sprintf(geocodeURL01, c, key)
 	response, err := getHttpResponse(url)
 
 	if err != nil {
 		return "", err
 	}
-
-	var cityResponse []struct {
-		Lat  float64 `json:"lat"`
-		Long float64 `json:"lon"`
+	var cityResponse struct {
+		Candidates [1]struct {
+			Location struct {
+				Lat  float64 `json:"x"`
+				Long float64 `json:"y"`
+			} `json:"location"`
+		} `json:"candidates"`
 	}
-	json.Unmarshal(response, &cityResponse)
-	return fmt.Sprintf("%v,%v", cityResponse[0].Lat, cityResponse[0].Long), nil
+	err = json.Unmarshal(response, &cityResponse)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%v,%v", cityResponse.Candidates[0].Location.Long, cityResponse.Candidates[0].Location.Lat), nil
 }
 
-func getLocation(coords string) LocationResponse {
+func getLocation(coords string) (LocationResponse, error) {
 	url := fmt.Sprintf(getLocationByPoints, coords)
-	response, _ := getHttpResponse(url)
+	response, err := getHttpResponse(url)
+
+	if err != nil {
+		return LocationResponse{}, err
+	}
+
 	var location LocationDTO
-	json.Unmarshal(response, &location)
+	err = json.Unmarshal(response, &location)
+	if err != nil {
+		return LocationResponse{}, err
+	}
 	location.getObservationStation()
 	lr := makeLocationResponse(location)
-	return lr
+	return lr, nil
 }
 
 func getAlerts(state string) (AlertResponse, error) {
@@ -358,7 +437,7 @@ func getHttpResponse(url string) ([]byte, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, errors.New(string(body))
-	} else {
-		return body, nil
 	}
+
+	return body, nil
 }

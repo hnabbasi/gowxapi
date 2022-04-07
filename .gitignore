@@ -1,21 +1,16 @@
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
 
-# Test binary, built with `go test -c`
-*.test
+# Azure Functions artifacts
+bin
+obj
+appsettings.json
+local.settings.json
 
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
+# Azurite artifacts
+__blobstorage__
+__queuestorage__
+__azurite_db*__.json
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# VS Code
-.vscode/
-
-# Local env
 local.env
+.DS_Store
+.vscode/
+build/*

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hnabbasi/gowxapi/handlers"
@@ -12,7 +11,7 @@ import (
 )
 
 func main() {
-	loadEnv()
+	// loadEnv()
 	setupServer()
 }
 
@@ -25,22 +24,18 @@ func loadEnv() {
 func setupServer() {
 	router := gin.Default()
 	setupRoutes(router)
-
-	port, e := strconv.Atoi(os.Getenv("PORT"))
-	if e != nil {
-		port = 8080
-	}
-
-	server := os.Getenv("SERVER")
-	if server == "" {
-		server = "localhost"
-	}
-
-	router.Run(fmt.Sprintf("%v:%v", server, port))
+	router.Run(getPort())
 }
 
 func setupRoutes(router *gin.Engine) {
 	router.GET("/", handlers.Home)
 	router.GET("/weather/:cityState", handlers.GetWeather)
 	router.GET("/alerts/:state", handlers.GetAlertsForState)
+}
+
+func getPort() string {
+	if val, ok := os.LookupEnv("FUNCTIONS_CUSTOMHANDLER_PORT"); ok {
+		return fmt.Sprintf(":%v", val)
+	}
+	return ":8080"
 }
