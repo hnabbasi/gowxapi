@@ -28,7 +28,7 @@ func setupServer() {
 }
 
 func setupRoutes(router *gin.Engine) {
-	router.GET("/", handlers.Home)
+	router.GET("/api", handlers.Home)
 	router.GET("/weather/:cityState", handlers.GetWeather)
 	router.GET("/alerts/:state", handlers.GetAlertsForState)
 }
