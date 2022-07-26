@@ -11,6 +11,7 @@ __queuestorage__
 __azurite_db*__.json
 
 local.env
+.env
 .DS_Store
 .vscode/
 build/*
