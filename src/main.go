@@ -6,12 +6,12 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
-	"github.com/hnabbasi/gowxapi/handlers"
+	handlers "github.com/hnabbasi/gowxapi/controllers"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	// loadEnv()
+	loadEnv()
 	setupServer()
 }
 
