@@ -2,23 +2,15 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
-	handlers "github.com/hnabbasi/gowxapi/controllers"
-	"github.com/joho/godotenv"
+	"github.com/hnabbasi/gowxapi/handlers"
 )
 
 func main() {
-	loadEnv()
 	setupServer()
-}
-
-func loadEnv() {
-	if err := godotenv.Load("../local.env"); err != nil {
-		log.Fatal(err.Error())
-	}
 }
 
 func setupServer() {
@@ -28,9 +20,11 @@ func setupServer() {
 }
 
 func setupRoutes(router *gin.Engine) {
-	router.GET("/api", handlers.Home)
-	router.GET("/weather/:cityState", handlers.GetWeather)
-	router.GET("/alerts/:state", handlers.GetAlertsForState)
+	router.GET("/api", func(c *gin.Context) {
+		c.JSON(http.StatusOK, "\u26c5 Welcome to Hussain's Weather API")
+	})
+	router.GET("/weather/:cityState", handlers.GetWeather())
+	router.GET("/alerts/:state", handlers.GetAlertsForState())
 }
 
 func getPort() string {
