@@ -27,12 +27,12 @@ jobs:
     - name: Build
       run: |
         cd src
-        GOOS=linux GOARCH=amd64 go build -v -o ../build/api main.go
+        GOOS=linux GOARCH=amd64 go build -v -o /build/api main.go
         
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v3.1.0
       with:
-        path: ../build
+        path: build
       
 #     - name: Run vet & lint
 #       run: |
@@ -52,12 +52,11 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    
-    
+
     - name: Download a Build Artifact
       uses: actions/download-artifact@v3.0.0
       with:
-        path: ../build
+        path: build
         
     - name: Azure Functions Action
       uses: Azure/functions-action@v1.4.6
@@ -65,5 +64,5 @@ jobs:
         # Name of the Azure Function App
         app-name: gowxapi
         # Path to package or folder. *.zip or a folder to deploy
-        package: ../build/api
+        package: build/api
         publish-profile: <publishData><publishProfile profileName="gowxapi - Web Deploy" publishMethod="MSDeploy" publishUrl="gowxapi.scm.azurewebsites.net:443" msdeploySite="gowxapi" userName="$gowxapi" userPWD="oFtAlz2jfWgR4qm7ntwHGjeJldbkzQaovRMlN7czZM9ajFnD7WXqENEbc4mo" destinationAppUrl="http://gowxapi.azurewebsites.net" SQLServerDBConnectionString="" mySQLDBConnectionString="" hostingProviderForumLink="" controlPanelLink="http://windows.azure.com" webSystem="WebSites"><databases /></publishProfile><publishProfile profileName="gowxapi - FTP" publishMethod="FTP" publishUrl="ftp://waws-prod-blu-077.ftp.azurewebsites.windows.net/site/wwwroot" ftpPassiveMode="True" userName="gowxapi\$gowxapi" userPWD="oFtAlz2jfWgR4qm7ntwHGjeJldbkzQaovRMlN7czZM9ajFnD7WXqENEbc4mo" destinationAppUrl="http://gowxapi.azurewebsites.net" SQLServerDBConnectionString="" mySQLDBConnectionString="" hostingProviderForumLink="" controlPanelLink="http://windows.azure.com" webSystem="WebSites"><databases /></publishProfile><publishProfile profileName="gowxapi - Zip Deploy" publishMethod="ZipDeploy" publishUrl="gowxapi.scm.azurewebsites.net:443" userName="$gowxapi" userPWD="oFtAlz2jfWgR4qm7ntwHGjeJldbkzQaovRMlN7czZM9ajFnD7WXqENEbc4mo" destinationAppUrl="http://gowxapi.azurewebsites.net" SQLServerDBConnectionString="" mySQLDBConnectionString="" hostingProviderForumLink="" controlPanelLink="http://windows.azure.com" webSystem="WebSites"><databases /></publishProfile><publishProfile profileName="gowxapi - ReadOnly - FTP" publishMethod="FTP" publishUrl="ftp://waws-prod-blu-077dr.ftp.azurewebsites.windows.net/site/wwwroot" ftpPassiveMode="True" userName="gowxapi\$gowxapi" userPWD="oFtAlz2jfWgR4qm7ntwHGjeJldbkzQaovRMlN7czZM9ajFnD7WXqENEbc4mo" destinationAppUrl="http://gowxapi.azurewebsites.net" SQLServerDBConnectionString="" mySQLDBConnectionString="" hostingProviderForumLink="" controlPanelLink="http://windows.azure.com" webSystem="WebSites"><databases /></publishProfile></publishData>
