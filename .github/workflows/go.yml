@@ -17,10 +17,20 @@ jobs:
       uses: actions/setup-go@v3
       with:
         go-version: 1.18
+        
+    - name: Install dependencies
+      run: |
+        go version
+        go get -u golang.org/x/lint/golint
 
     - name: Build
       run: GOOS=linux GOARCH=amd64 go build -v -o ../az-functions/api ../src/main.go
-
+      
+    - name: Run vet & lint
+      run: |
+        go vet .
+        golint ../src/.
+        
     - name: Test
       run: go test -v ./...
       
