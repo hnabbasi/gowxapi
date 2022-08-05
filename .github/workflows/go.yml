@@ -19,7 +19,7 @@ jobs:
         go-version: 1.18
 
     - name: Build
-      run: GOOS=linux GOARCH=amd64 go build -v -o ../az-functions/api main.go
+      run: GOOS=linux GOARCH=amd64 go build -v -o ../az-functions/api ../src/main.go
 
     - name: Test
       run: go test -v ./...
