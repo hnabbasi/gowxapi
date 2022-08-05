@@ -21,6 +21,7 @@ jobs:
     - name: Install dependencies
       run: |
         go version
+        cd src
         go get -u golang.org/x/lint/golint
 
     - name: Build
