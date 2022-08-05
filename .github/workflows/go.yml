@@ -25,15 +25,20 @@ jobs:
         go get -u golang.org/x/lint/golint
 
     - name: Build
-      run: GOOS=linux GOARCH=amd64 go build -v -o ../az-functions/api ../src/main.go
+      run: |
+        cd src
+        GOOS=linux GOARCH=amd64 go build -v -o ../az-functions/api main.go
       
     - name: Run vet & lint
       run: |
+        cd src
         go vet .
-        golint ../src/.
+        golint .
         
     - name: Test
-      run: go test -v ./...
+      run: |
+        cd src
+        go test -v ./...
       
     #- name: Publish to Azure
     #  run: func azure functionapp publish gowxapi --custom
