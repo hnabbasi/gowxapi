@@ -44,17 +44,16 @@ jobs:
       with:
         name: api
 
-    - name: Publish to Azure
+    - name: Log in to Azure
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Check sub
-      run: az account list
-#       run: func azure functionapp publish gowxapi --custom
+    - name: Publish Azure Functions
+      run: func azure functionapp publish gowxapi --custom
 
-    - name: Azure Functions Action
-      uses: Azure/functions-action@v1.4.6
-      with:
-        app-name: gowxapi
+#     - name: Azure Functions Action
+#       uses: Azure/functions-action@v1.4.6
+#       with:
+#         app-name: gowxapi
 
