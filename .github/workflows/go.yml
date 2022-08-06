@@ -27,7 +27,7 @@ jobs:
         GOOS=linux GOARCH=amd64 go build -v -o ../build/api main.go
         cd ..
         cd build
-        la
+        ls
         
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v3.1.0
