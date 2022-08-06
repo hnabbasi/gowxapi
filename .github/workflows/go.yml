@@ -47,20 +47,20 @@ jobs:
       with:
         name: api
 
-    - name: Publish to Azure
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-    - name: Check sub
-      run: az account
+#     - name: Publish to Azure
+#       uses: azure/login@v1
+#       with:
+#         creds: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+#     - name: Check sub
+#       run: az account
 #       run: func azure functionapp publish gowxapi --custom
 
-#     - name: Azure Functions Action
-#       uses: Azure/functions-action@v1.4.6
-#       with:
-#         # Name of the Azure Function App
-#         app-name: gowxapi
-#         # Path to package or folder. *.zip or a folder to deploy
-#         package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-#         publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+    - name: Azure Functions Action
+      uses: Azure/functions-action@v1.4.6
+      with:
+        # Name of the Azure Function App
+        app-name: gowxapi
+        # Path to package or folder. *.zip or a folder to deploy
+        package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
 
