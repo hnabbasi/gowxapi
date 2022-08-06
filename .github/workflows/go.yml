@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 env:
-      AZURE_FUNCTIONAPP_PACKAGE_PATH: 'gowxapi/gowxapi/build'
+      AZURE_FUNCTIONAPP_PACKAGE_PATH: 'api'
 
 jobs:
 
@@ -50,7 +50,6 @@ jobs:
       uses: actions/download-artifact@v3.0.0
       with:
         name: api
-        path: build
     
     - name: Print location
       run: ls
