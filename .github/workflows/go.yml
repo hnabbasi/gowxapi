@@ -45,15 +45,11 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-
     - name: Download a Build Artifact
       uses: actions/download-artifact@v3.0.0
       with:
         name: api
-    
-    - name: Print location
-      run: ls
-        
+
     - name: Azure Functions Action
       uses: Azure/functions-action@v1.4.6
       with:
