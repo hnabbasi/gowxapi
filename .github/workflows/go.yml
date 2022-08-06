@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 env:
-      AZURE_FUNCTIONAPP_PACKAGE_PATH: 'api'
+      AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
 
 jobs:
 
