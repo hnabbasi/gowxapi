@@ -47,6 +47,7 @@ jobs:
       uses: actions/download-artifact@v3.0.0
       with:
         name: api
+        path: .
         
     - name: Azure Functions Action
       uses: Azure/functions-action@v1.4.6
