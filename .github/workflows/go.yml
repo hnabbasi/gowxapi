@@ -24,7 +24,7 @@ jobs:
     - name: Build
       run: |
         cd src
-        GOOS=linux GOARCH=amd64 go build -v -o ../build/api main.go
+        GOOS=linux GOARCH=amd64 go build -v -o /build/api main.go
         
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v3.1.0
@@ -53,7 +53,7 @@ jobs:
         path: build
     
     - name: Print location
-      run: echo .
+      run: ll
         
     - name: Azure Functions Action
       uses: Azure/functions-action@v1.4.6
