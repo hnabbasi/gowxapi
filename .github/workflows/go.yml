@@ -47,12 +47,13 @@ jobs:
       with:
         name: api
 
-#     - name: Publish to Azure
-#       uses: azure/login@v1
-#       with:
-#         creds: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-#     - name: Check sub
-#       run: az account
+    - name: Publish to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Check sub
+      run: az account list
 #       run: func azure functionapp publish gowxapi --custom
 
     - name: Azure Functions Action
