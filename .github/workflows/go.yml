@@ -33,7 +33,7 @@ jobs:
       uses: actions/upload-artifact@v3.1.0
       with:
         name: ${{ env.ARTIFACT_NAME }}
-        path: ${{ env.BUILD_OUTPUT_PATH }}
+        path: ${{ env.BUILD_OUTPUT_PATH }}/${{ env.ARTIFACT_NAME }}
 
     - name: Test
       run: |
