@@ -8,11 +8,7 @@
       }
     }
   },
-  "extensionBundle": {
-    "id": "Microsoft.Azure.Functions.ExtensionBundle",
-    "version": "[2.*, 3.0.0)"
-  },
-	"extensions":{"http":{"routePrefix":""}},
+  "extensions":{"http":{"routePrefix":""}},
   "customHandler": {
 	"enableForwardingHttpRequest":true,
     "description": {
