@@ -5,6 +5,12 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+    
+env:
+  OS: 'linux'
+  ARCH: 'amd64'
+  BUILD_OUTPUT_PATH: 'build'
+  ARTIFACT_NAME: 'api'
 
 jobs:
 
@@ -21,13 +27,13 @@ jobs:
     - name: Build
       run: |
         cd src
-        GOOS=linux GOARCH=amd64 go build -v -o ../build/api main.go
+        GOOS=${{ env.OS }} GOARCH=${{ env.ARCH }} go build -v -o ../${{ env.BUILD_OUTPUT_PATH }}/${{ env.ARTIFACT_NAME }} main.go
         
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v3.1.0
       with:
-        name: api
-        path: build/api
+        name: ${{ env.ARTIFACT_NAME }}
+        path: ${{ env.BUILD_OUTPUT_PATH }}
 
     - name: Test
       run: |
@@ -42,18 +48,19 @@ jobs:
     - name: Download a Build Artifact
       uses: actions/download-artifact@v3.0.0
       with:
-        name: api
+        name: ${{ env.ARTIFACT_NAME }}
 
     - name: Log in to Azure
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Publish Azure Functions
-      run: func azure functionapp publish gowxapi --custom
+    - name: Azure Functions Action
+      uses: Azure/functions-action@v1.4.6
+      with:
+        app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
 
-#     - name: Azure Functions Action
-#       uses: Azure/functions-action@v1.4.6
-#       with:
-#         app-name: gowxapi
+    - name: Log out of Azure
+      run: |
+        az logout
 
