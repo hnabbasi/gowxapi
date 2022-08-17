@@ -38,7 +38,9 @@ const (
 // - Daily rain chances for next 7 days
 // - Area forecast discussion
 func GetWeather(cityState string) (models.WeatherResponse, error) {
+
 	var weatherResponse models.WeatherResponse
+
 	errorsChannel := make(chan error)
 	doneChannel := make(chan bool)
 	coordsChannel := make(chan string)
@@ -81,7 +83,7 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 	go func(alertsChannel chan models.AlertResponse) {
 		alerts, err := alerts.GetAlerts(weatherResponse.LocationResponse.State)
 		if err != nil {
-			errorsChannel <- errors.New(fmt.Sprintf("Could not pull alerts for %v. Error:%v", weatherResponse.LocationResponse.State, err.Error()))
+			log.Printf(fmt.Sprintf("Could not pull alerts for %v. Error:%v", weatherResponse.LocationResponse.State, err.Error()))
 		} else {
 			alertsChannel <- alerts
 			close(alertsChannel)
@@ -94,7 +96,7 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 		url := fmt.Sprintf(getLatestObservationsByStation, weatherResponse.LocationResponse.ObservationStation)
 		observations, err := getCurrentConditions(url)
 		if err != nil {
-			errorsChannel <- errors.New(fmt.Sprintf("Could not get latest conditions. Error:%v", err.Error()))
+			log.Printf(fmt.Sprintf("Could not get latest conditions. Error:%v", err.Error()))
 		} else {
 			observationChannel <- observations
 			close(observationChannel)
@@ -106,7 +108,7 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 	go func(periodsChannel chan []models.Period) {
 		hourly, err := getPeriods(weatherResponse.LocationResponse.HourlyForecastUrl, 24)
 		if err != nil {
-			errorsChannel <- errors.New(fmt.Sprintf("Could not get hourly conditions. Error:%v", err.Error()))
+			log.Printf(fmt.Sprintf("Could not get hourly conditions. Error:%v", err.Error()))
 		} else {
 			periodsChannel <- hourly
 			close(periodsChannel)
@@ -118,7 +120,7 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 	go func(weeklyChannel chan []models.DailyForecast) {
 		weekly, err := getWeekly(weatherResponse.LocationResponse.ForecastUrl)
 		if err != nil {
-			errorsChannel <- errors.New(fmt.Sprintf("Could not get weekly conditions. Error:%v", err.Error()))
+			log.Printf(fmt.Sprintf("Could not get weekly conditions. Error:%v", err.Error()))
 		} else {
 			weeklyChannel <- weekly
 			close(weeklyChannel)
@@ -130,7 +132,7 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 	go func(rainChannel chan map[string][]int) {
 		rainChances, err := getRainChancesMap(weatherResponse.LocationResponse.ForecastGridDataUrl)
 		if err != nil {
-			errorsChannel <- errors.New(fmt.Sprintf("Could not get rain chances. Error:%v", err.Error()))
+			log.Printf(fmt.Sprintf("Could not get rain chances. Error:%v", err.Error()))
 		} else {
 			rainChannel <- rainChances
 			close(rainChannel)
@@ -143,7 +145,7 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 	go func(productChannel chan models.Product) {
 		product, err := getAfdProduct(fmt.Sprintf(getAfdByLocation0, weatherResponse.CountyWarningArea))
 		if err != nil {
-			errorsChannel <- errors.New(fmt.Sprintf("Could not get forecast discussion. Error:%v", err.Error()))
+			log.Printf(fmt.Sprintf("Could not get forecast discussion. Error:%v", err.Error()))
 		} else {
 			productChannel <- product
 			close(productChannel)
@@ -152,10 +154,8 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 	}(productChannel)
 	weatherResponse.AreaForecastDiscussion = <-productChannel
 
-	go func() {
-		wg.Wait()
-		close(doneChannel)
-	}()
+	wg.Wait()
+	close(doneChannel)
 
 	select {
 	case <-doneChannel:
@@ -365,22 +365,6 @@ func getLocation(coords string) (models.LocationResponse, error) {
 	lr := models.MakeLocationResponse(location)
 	return lr, nil
 }
-
-// func getAlerts(state string) (models.AlertResponse, error) {
-// 	url := fmt.Sprintf("%v/%v", stateAlerts, strings.ToUpper(state))
-// 	response, err := getHttpResponse(url)
-
-// 	var alertResponse struct {
-// 		Updated time.Time      `json:"updated"`
-// 		Alerts  []models.Alert `json:"features"`
-// 	}
-
-// 	if jsonErr := json.Unmarshal(response, &alertResponse); jsonErr != nil {
-// 		log.Fatal(jsonErr)
-// 		return models.AlertResponse{}, errors.New(jsonErr.Error())
-// 	}
-// 	return models.AlertResponse{Updated: alertResponse.Updated, Alerts: alertResponse.Alerts}, err
-// }
 
 func getObservationStation(stationUrl string, locationDTO *models.LocationDTO) {
 	stations, err := getHttpResponse(stationUrl)
