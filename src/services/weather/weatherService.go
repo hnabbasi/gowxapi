@@ -10,7 +10,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hnabbasi/gowxapi/models"
@@ -39,12 +38,10 @@ const (
 // - Area forecast discussion
 func GetWeather(cityState string) (models.WeatherResponse, error) {
 
-	var weatherResponse models.WeatherResponse
+	weatherResponse := models.WeatherResponse{}
 
-	errorsChannel := make(chan error)
-	doneChannel := make(chan bool)
-	coordsChannel := make(chan string)
-	locationChannel := make(chan models.LocationResponse)
+	processes := 6
+
 	alertsChannel := make(chan models.AlertResponse)
 	observationChannel := make(chan models.Observation)
 	periodsChannel := make(chan []models.Period)
@@ -52,118 +49,98 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 	rainChannel := make(chan map[string][]int)
 	productChannel := make(chan models.Product)
 
-	wg := sync.WaitGroup{}
-	wg.Add(8)
+	cityCoords, err := getCity(cityState)
+	if err != nil {
+		log.Fatal(err)
+		return weatherResponse, errors.New(fmt.Sprintf("Could not find city for coords %v.", cityCoords))
+	}
 
-	go func(coordsChannel chan string, errorsChannel chan error) {
-		cityCoords, err := getCity(cityState)
-		if err != nil {
-			log.Fatal(err)
-			errorsChannel <- errors.New(fmt.Sprintf("Could not find city for coords %v.", cityCoords))
-		} else {
-			coordsChannel <- cityCoords
-			close(coordsChannel)
-		}
-		wg.Done()
-	}(coordsChannel, errorsChannel)
-
-	go func(locationChannel chan models.LocationResponse, errorsChannel chan error) {
-		location, err := getLocation(<-coordsChannel)
-		if err != nil {
-			log.Fatal(err)
-			errorsChannel <- errors.New("Could not find location.")
-		} else {
-			locationChannel <- location
-			close(locationChannel)
-		}
-		wg.Done()
-	}(locationChannel, errorsChannel)
-	weatherResponse.LocationResponse = <-locationChannel
+	location, err := getLocation(cityCoords)
+	if err != nil {
+		log.Fatal(err)
+		return weatherResponse, errors.New("Could not find location.")
+	}
+	weatherResponse.LocationResponse = location
 
 	go func(alertsChannel chan models.AlertResponse) {
 		alerts, err := alerts.GetAlerts(weatherResponse.LocationResponse.State)
 		if err != nil {
 			log.Printf(fmt.Sprintf("Could not pull alerts for %v. Error:%v", weatherResponse.LocationResponse.State, err.Error()))
+			close(alertsChannel)
 		} else {
 			alertsChannel <- alerts
-			close(alertsChannel)
 		}
-		wg.Done()
 	}(alertsChannel)
-	weatherResponse.AlertResponse = <-alertsChannel
 
 	go func(observationChannel chan models.Observation) {
 		url := fmt.Sprintf(getLatestObservationsByStation, weatherResponse.LocationResponse.ObservationStation)
 		observations, err := getCurrentConditions(url)
 		if err != nil {
 			log.Printf(fmt.Sprintf("Could not get latest conditions. Error:%v", err.Error()))
+			close(observationChannel)
 		} else {
 			observationChannel <- observations
-			close(observationChannel)
 		}
-		wg.Done()
 	}(observationChannel)
-	weatherResponse.Observation = <-observationChannel
 
 	go func(periodsChannel chan []models.Period) {
 		hourly, err := getPeriods(weatherResponse.LocationResponse.HourlyForecastUrl, 24)
 		if err != nil {
 			log.Printf(fmt.Sprintf("Could not get hourly conditions. Error:%v", err.Error()))
+			close(periodsChannel)
 		} else {
 			periodsChannel <- hourly
-			close(periodsChannel)
 		}
-		wg.Done()
 	}(periodsChannel)
-	weatherResponse.Hourly = <-periodsChannel
 
 	go func(weeklyChannel chan []models.DailyForecast) {
 		weekly, err := getWeekly(weatherResponse.LocationResponse.ForecastUrl)
 		if err != nil {
 			log.Printf(fmt.Sprintf("Could not get weekly conditions. Error:%v", err.Error()))
+			close(weeklyChannel)
 		} else {
 			weeklyChannel <- weekly
-			close(weeklyChannel)
 		}
-		wg.Done()
 	}(weeklyChannel)
-	weatherResponse.Weekly = <-weeklyChannel
 
 	go func(rainChannel chan map[string][]int) {
 		rainChances, err := getRainChancesMap(weatherResponse.LocationResponse.ForecastGridDataUrl)
 		if err != nil {
 			log.Printf(fmt.Sprintf("Could not get rain chances. Error:%v", err.Error()))
+			close(rainChannel)
 		} else {
 			rainChannel <- rainChances
-			close(rainChannel)
 		}
-		wg.Done()
 	}(rainChannel)
-	weatherResponse.RainChances.UnitCode = "wmoUnit:percent"
-	weatherResponse.RainChances.Values = <-rainChannel
 
 	go func(productChannel chan models.Product) {
 		product, err := getAfdProduct(fmt.Sprintf(getAfdByLocation0, weatherResponse.CountyWarningArea))
 		if err != nil {
 			log.Printf(fmt.Sprintf("Could not get forecast discussion. Error:%v", err.Error()))
+			close(productChannel)
 		} else {
 			productChannel <- product
-			close(productChannel)
 		}
-		wg.Done()
 	}(productChannel)
-	weatherResponse.AreaForecastDiscussion = <-productChannel
 
-	wg.Wait()
-	close(doneChannel)
-
-	select {
-	case <-doneChannel:
-		break
-	case err := <-errorsChannel:
-		close(errorsChannel)
-		return models.WeatherResponse{}, err
+	for i := 0; i < processes; i++ {
+		select {
+		case alerts := <-alertsChannel:
+			weatherResponse.AlertResponse = alerts
+		case observations := <-observationChannel:
+			weatherResponse.Observation = observations
+		case hourly := <-periodsChannel:
+			weatherResponse.Hourly = hourly
+		case weekly := <-weeklyChannel:
+			weatherResponse.Weekly = weekly
+		case rainChances := <-rainChannel:
+			weatherResponse.RainChances.UnitCode = "wmoUnit:percent"
+			weatherResponse.RainChances.Values = rainChances
+		case afdProduct := <-productChannel:
+			weatherResponse.AreaForecastDiscussion = afdProduct
+		}
 	}
+
 	return weatherResponse, nil
 }
 
