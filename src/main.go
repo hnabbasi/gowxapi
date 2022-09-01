@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 
@@ -10,13 +11,15 @@ import (
 )
 
 func main() {
-	setupServer()
+	if err := setupServer(); err != nil {
+		log.Println(err.Error())
+	}
 }
 
-func setupServer() {
+func setupServer() error {
 	router := gin.Default()
 	setupRoutes(router)
-	router.Run(getPort())
+	return router.Run(getPort())
 }
 
 func setupRoutes(router *gin.Engine) {
