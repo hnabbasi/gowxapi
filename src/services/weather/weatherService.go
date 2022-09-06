@@ -32,7 +32,7 @@ const (
 // - Current conditions
 // - Active alerts
 // - Hourly conditions for next 24 hours
-// - Weekly conditions for next 7 days
+// - Daily conditions for next 7 days
 // - Hourly rain chances for next 24 hours
 // - Daily rain chances for next 7 days
 // - Area forecast discussion
@@ -89,11 +89,11 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 	}()
 
 	go func() {
-		weekly, err := getWeekly(weatherResponse.LocationResponse.ForecastUrl)
+		daily, err := getDaily(weatherResponse.LocationResponse.ForecastUrl)
 		if err != nil {
-			log.Printf(fmt.Sprintf("Could not get weekly conditions. Error:%v", err.Error()))
+			log.Printf(fmt.Sprintf("Could not get daily conditions. Error:%v", err.Error()))
 		} else {
-			weatherResponse.Weekly = weekly
+			weatherResponse.Daily = daily
 		}
 		wg.Done()
 	}()
@@ -200,7 +200,7 @@ func fillPeriods(periods []models.ValueItem) (map[string][]int, error) {
 	return retVal, nil
 }
 
-func getWeekly(url string) ([]models.DailyForecast, error) {
+func getDaily(url string) ([]models.DailyForecast, error) {
 	response, err := getPeriods(url, 0)
 
 	dailyMap := make(map[int]models.DailyForecast)
@@ -223,14 +223,14 @@ func getWeekly(url string) ([]models.DailyForecast, error) {
 		dailyMap[period.StartTime.Day()] = day
 	}
 
-	weekly := []models.DailyForecast{}
+	var daily []models.DailyForecast
 	for _, forecast := range dailyMap {
-		weekly = append(weekly, forecast)
+		daily = append(daily, forecast)
 	}
-	sort.SliceStable(weekly, func(i, j int) bool {
-		return weekly[i].Date.Day() < weekly[j].Date.Day()
+	sort.SliceStable(daily, func(i, j int) bool {
+		return daily[i].Date.Day() < daily[j].Date.Day()
 	})
-	return weekly, err
+	return daily, err
 }
 
 func getPeriods(url string, count int) ([]models.Period, error) {

@@ -28,7 +28,7 @@ func GetAlerts(state string) (models.AlertResponse, error) {
 	}
 
 	if jsonErr := json.Unmarshal(response, &alertResponse); jsonErr != nil {
-		log.Fatal(jsonErr)
+		log.Println(jsonErr)
 		return models.AlertResponse{}, errors.New(jsonErr.Error())
 	}
 	return models.AlertResponse{Updated: alertResponse.Updated, Alerts: alertResponse.Alerts}, err
@@ -38,11 +38,17 @@ func getHttpResponse(url string) ([]byte, error) {
 	resp, err := http.Get(url)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 		return nil, err
 	}
 
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Println(err.Error())
+		}
+	}(resp.Body)
+
 	body, err := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {

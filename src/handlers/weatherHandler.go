@@ -13,7 +13,7 @@ import (
 // - Current conditions
 // - Active alerts
 // - Hourly conditions for next 24 hours
-// - Weekly conditions for next 7 days
+// - Daily conditions for next 7 days
 // - Hourly rain chances for next 24 hours
 // - Daily rain chances for next 7 days
 // - Area forecast discussion
