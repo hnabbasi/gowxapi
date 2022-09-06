@@ -54,7 +54,7 @@ jobs:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
     - name: Publish Azure Functions
-      uses: Azure/functions-action@v1.4.6
+      uses: Azure/functions-action@v1.4.7
       with:
         app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
 
