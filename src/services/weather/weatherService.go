@@ -20,11 +20,8 @@ import (
 )
 
 const (
-	baseURL                        = "https://api.weather.gov"
-	geocodeURL01                   = "https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=pjson&singleLine=%v&token=%v"
-	getLatestObservationsByStation = baseURL + "/stations/%v/observations/latest?require_qc=true"
-	getLocationByPoints            = baseURL + "/points/%v"
-	getAfdByLocation0              = baseURL + "/products/types/AFD/locations/%v"
+	baseURL      = "https://api.weather.gov"
+	geocodeURL01 = "https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=pjson&singleLine=%v&token=%v"
 )
 
 // GetWeather Get complete weather information for a give city name e.g. Houston
@@ -72,17 +69,18 @@ func startAlertsRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherRespo
 	if err != nil {
 		log.Printf(fmt.Sprintf("Could not pull alerts for %v. Error:%v", weatherResponse.LocationResponse.State, err.Error()))
 	} else {
-		weatherResponse.AlertResponse = response
+		weatherResponse.Alerts.AlertResponse = response
 	}
 	wg.Done()
 }
 
 func startObservationsRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
-	url := fmt.Sprintf(getLatestObservationsByStation, weatherResponse.LocationResponse.ObservationStation)
+	url := fmt.Sprintf("%v/stations/%v/observations/latest?require_qc=true", baseURL, weatherResponse.LocationResponse.ObservationStation)
 	observations, err := getCurrentConditions(url)
 	if err != nil {
 		log.Printf(fmt.Sprintf("Could not get latest conditions. Error:%v", err.Error()))
 	} else {
+		weatherResponse.Updated = observations.Timestamp
 		weatherResponse.Observation = observations
 	}
 	wg.Done()
@@ -120,7 +118,7 @@ func startRainRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherRespons
 }
 
 func startAfdProductRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
-	product, err := getAfdProduct(fmt.Sprintf(getAfdByLocation0, weatherResponse.CountyWarningArea))
+	product, err := getAfdProduct(fmt.Sprintf("%v/products/types/AFD/locations/%v", baseURL, weatherResponse.CountyWarningArea))
 	if err != nil {
 		log.Printf(fmt.Sprintf("Could not get forecast discussion. Error:%v", err.Error()))
 	} else {
@@ -313,7 +311,7 @@ func getCity(c string) (string, error) {
 }
 
 func getLocation(coords string) (models.LocationResponse, error) {
-	url := fmt.Sprintf(getLocationByPoints, coords)
+	url := fmt.Sprintf("%v/points/%v", baseURL, coords)
 	response, err := getHttpResponse(url)
 
 	if err != nil {

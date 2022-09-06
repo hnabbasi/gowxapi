@@ -136,6 +136,7 @@ type DailyForecast struct {
 }
 
 type Observation struct {
+	Timestamp        time.Time `json:"timestamp"`
 	TextDescription  string    `json:"textDescription,omitempty"`
 	Icon             string    `json:"icon,omitempty"`
 	Temperature      ValueItem `json:"temperature,omitempty"`
@@ -162,6 +163,7 @@ type Product struct {
 }
 
 type WeatherResponse struct {
+	Updated time.Time `json:"updated"`
 	LocationResponse
 	Alerts struct {
 		AlertResponse
