@@ -39,10 +39,7 @@ const (
 func GetWeather(cityState string) (models.WeatherResponse, error) {
 
 	weatherResponse := models.WeatherResponse{}
-
-	processes := 6
 	wg := sync.WaitGroup{}
-	wg.Add(processes)
 
 	cityCoords, err := getCity(cityState)
 	if err != nil {
@@ -57,70 +54,82 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 	}
 	weatherResponse.LocationResponse = location
 
-	go func() {
-		response, err := alerts.GetAlerts(weatherResponse.LocationResponse.State)
-		if err != nil {
-			log.Printf(fmt.Sprintf("Could not pull alerts for %v. Error:%v", weatherResponse.LocationResponse.State, err.Error()))
-		} else {
-			weatherResponse.AlertResponse = response
-		}
-		wg.Done()
-	}()
-
-	go func() {
-		url := fmt.Sprintf(getLatestObservationsByStation, weatherResponse.LocationResponse.ObservationStation)
-		observations, err := getCurrentConditions(url)
-		if err != nil {
-			log.Printf(fmt.Sprintf("Could not get latest conditions. Error:%v", err.Error()))
-		} else {
-			weatherResponse.Observation = observations
-		}
-		wg.Done()
-	}()
-
-	go func() {
-		hourly, err := getPeriods(weatherResponse.LocationResponse.HourlyForecastUrl, 24)
-		if err != nil {
-			log.Printf(fmt.Sprintf("Could not get hourly conditions. Error:%v", err.Error()))
-		} else {
-			weatherResponse.Hourly = hourly
-		}
-		wg.Done()
-	}()
-
-	go func() {
-		daily, err := getDaily(weatherResponse.LocationResponse.ForecastUrl)
-		if err != nil {
-			log.Printf(fmt.Sprintf("Could not get daily conditions. Error:%v", err.Error()))
-		} else {
-			weatherResponse.Daily = daily
-		}
-		wg.Done()
-	}()
-
-	go func() {
-		rainChances, err := getRainChancesMap(weatherResponse.LocationResponse.ForecastGridDataUrl)
-		if err != nil {
-			log.Printf(fmt.Sprintf("Could not get rain chances. Error:%v", err.Error()))
-		} else {
-			weatherResponse.RainChances.UnitCode = "wmoUnit:percent"
-			weatherResponse.RainChances.Values = rainChances
-		}
-		wg.Done()
-	}()
-
-	go func() {
-		product, err := getAfdProduct(fmt.Sprintf(getAfdByLocation0, weatherResponse.CountyWarningArea))
-		if err != nil {
-			log.Printf(fmt.Sprintf("Could not get forecast discussion. Error:%v", err.Error()))
-		} else {
-			weatherResponse.AreaForecastDiscussion = product
-		}
-		wg.Done()
-	}()
+	wg.Add(6)
+	go startAlertsRoutine(&wg, &weatherResponse)
+	go startObservationsRoutine(&wg, &weatherResponse)
+	go startHourlyRoutine(&wg, &weatherResponse)
+	go startDailyRoutine(&wg, &weatherResponse)
+	go startRainRoutine(&wg, &weatherResponse)
+	go startAfdProductRoutine(&wg, &weatherResponse)
 	wg.Wait()
 	return weatherResponse, nil
 }
+
+// Goroutines
+
+func startAlertsRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+	response, err := alerts.GetAlerts(weatherResponse.LocationResponse.State)
+	if err != nil {
+		log.Printf(fmt.Sprintf("Could not pull alerts for %v. Error:%v", weatherResponse.LocationResponse.State, err.Error()))
+	} else {
+		weatherResponse.AlertResponse = response
+	}
+	wg.Done()
+}
+
+func startObservationsRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+	url := fmt.Sprintf(getLatestObservationsByStation, weatherResponse.LocationResponse.ObservationStation)
+	observations, err := getCurrentConditions(url)
+	if err != nil {
+		log.Printf(fmt.Sprintf("Could not get latest conditions. Error:%v", err.Error()))
+	} else {
+		weatherResponse.Observation = observations
+	}
+	wg.Done()
+}
+
+func startHourlyRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+	hourly, err := getPeriods(weatherResponse.LocationResponse.HourlyForecastUrl, 24)
+	if err != nil {
+		log.Printf(fmt.Sprintf("Could not get hourly conditions. Error:%v", err.Error()))
+	} else {
+		weatherResponse.Hourly = hourly
+	}
+	wg.Done()
+}
+
+func startDailyRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+	daily, err := getDaily(weatherResponse.LocationResponse.ForecastUrl)
+	if err != nil {
+		log.Printf(fmt.Sprintf("Could not get daily conditions. Error:%v", err.Error()))
+	} else {
+		weatherResponse.Daily = daily
+	}
+	wg.Done()
+}
+
+func startRainRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+	rainChances, err := getRainChancesMap(weatherResponse.LocationResponse.ForecastGridDataUrl)
+	if err != nil {
+		log.Printf(fmt.Sprintf("Could not get rain chances. Error:%v", err.Error()))
+	} else {
+		weatherResponse.RainChances.UnitCode = "wmoUnit:percent"
+		weatherResponse.RainChances.Values = rainChances
+	}
+	wg.Done()
+}
+
+func startAfdProductRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+	product, err := getAfdProduct(fmt.Sprintf(getAfdByLocation0, weatherResponse.CountyWarningArea))
+	if err != nil {
+		log.Printf(fmt.Sprintf("Could not get forecast discussion. Error:%v", err.Error()))
+	} else {
+		weatherResponse.AreaForecastDiscussion = product
+	}
+	wg.Done()
+}
+
+// Methods
 
 func getAfdProduct(url string) (models.Product, error) {
 	response, err := getHttpResponse(url)
