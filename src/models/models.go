@@ -167,7 +167,7 @@ type WeatherResponse struct {
 	LocationResponse
 	Alerts struct {
 		AlertResponse
-	} `json:"alerts"`
+	} `json:"activeAlerts"`
 	Observation `json:"latestObservations"`
 	Hourly      []Period        `json:"hourly"`
 	Daily       []DailyForecast `json:"daily"`
