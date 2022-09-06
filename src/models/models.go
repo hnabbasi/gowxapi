@@ -19,7 +19,7 @@ type Alert struct {
 
 type AlertResponse struct {
 	Updated time.Time `json:"updated"`
-	Count   int       `json:"count"`
+	Count   int       `json:"alertsCount"`
 	Alerts  []Alert   `json:"alerts"`
 }
 
