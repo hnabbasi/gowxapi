@@ -164,7 +164,7 @@ type WeatherResponse struct {
 	AlertResponse
 	LocationResponse
 	Hourly      []Period        `json:"hourly"`
-	Weekly      []DailyForecast `json:"weekly"`
+	Daily       []DailyForecast `json:"daily"`
 	Observation `json:"latestObservations"`
 	RainChances struct {
 		UnitCode string           `json:"unitCode"`
