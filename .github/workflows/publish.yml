@@ -7,7 +7,7 @@ on:
 env:
   OS: 'linux'
   ARCH: 'amd64'
-  BUILD_OUTPUT_PATH: 'build'
+  BUILD_OUTPUT_PATH: 'az-functions'
   ARTIFACT_NAME: 'api'
 
 jobs:
@@ -31,7 +31,7 @@ jobs:
       uses: actions/upload-artifact@v3.1.0
       with:
         name: ${{ env.ARTIFACT_NAME }}
-        path: ${{ env.BUILD_OUTPUT_PATH }}/${{ env.ARTIFACT_NAME }}
+        path: ${{ env.BUILD_OUTPUT_PATH }}/
 
     - name: Test
       run: |
@@ -62,7 +62,6 @@ jobs:
     
     - name: Publish Azure Functions
       run: |
-        cd az-functions
         func azure functionapp publish ${{ secrets.AZURE_FUNCTIONAPP_NAME }} --custom
 
 #     - name: Publish Azure Functions
