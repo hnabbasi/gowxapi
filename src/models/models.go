@@ -19,7 +19,7 @@ type Alert struct {
 
 type AlertResponse struct {
 	Updated time.Time `json:"updated"`
-	Count   int       `json:"alertsCount"`
+	Count   int       `json:"count"`
 	Alerts  []Alert   `json:"alerts"`
 }
 
@@ -136,6 +136,7 @@ type DailyForecast struct {
 }
 
 type Observation struct {
+	Timestamp        time.Time `json:"timestamp"`
 	TextDescription  string    `json:"textDescription,omitempty"`
 	Icon             string    `json:"icon,omitempty"`
 	Temperature      ValueItem `json:"temperature,omitempty"`
@@ -162,11 +163,14 @@ type Product struct {
 }
 
 type WeatherResponse struct {
-	AlertResponse
+	Updated time.Time `json:"updated"`
 	LocationResponse
+	Alerts struct {
+		AlertResponse
+	} `json:"alerts"`
+	Observation `json:"latestObservations"`
 	Hourly      []Period        `json:"hourly"`
 	Daily       []DailyForecast `json:"daily"`
-	Observation `json:"latestObservations"`
 	RainChances struct {
 		UnitCode string           `json:"unitCode"`
 		Values   map[string][]int `json:"values"`
