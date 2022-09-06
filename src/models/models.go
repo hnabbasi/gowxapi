@@ -19,7 +19,7 @@ type Alert struct {
 
 type AlertResponse struct {
 	Updated time.Time `json:"updated"`
-	Count   int       `json:"alertsCount"`
+	Count   int       `json:"count"`
 	Alerts  []Alert   `json:"alerts"`
 }
 
@@ -162,11 +162,13 @@ type Product struct {
 }
 
 type WeatherResponse struct {
-	AlertResponse
 	LocationResponse
+	Alerts struct {
+		AlertResponse
+	} `json:"alerts"`
+	Observation `json:"latestObservations"`
 	Hourly      []Period        `json:"hourly"`
 	Daily       []DailyForecast `json:"daily"`
-	Observation `json:"latestObservations"`
 	RainChances struct {
 		UnitCode string           `json:"unitCode"`
 		Values   map[string][]int `json:"values"`
