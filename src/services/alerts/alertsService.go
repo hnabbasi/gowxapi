@@ -31,7 +31,7 @@ func GetAlerts(state string) (models.AlertResponse, error) {
 		log.Println(jsonErr)
 		return models.AlertResponse{}, errors.New(jsonErr.Error())
 	}
-	return models.AlertResponse{Updated: alertResponse.Updated, Alerts: alertResponse.Alerts}, err
+	return models.AlertResponse{Updated: alertResponse.Updated, Count: len(alertResponse.Alerts), Alerts: alertResponse.Alerts}, err
 }
 
 func getHttpResponse(url string) ([]byte, error) {

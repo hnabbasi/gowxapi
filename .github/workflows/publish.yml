@@ -1,0 +1,74 @@
+name: Publish
+
+on:
+  push:
+    branches: [ "main" ]
+    
+env:
+  OS: 'linux'
+  ARCH: 'amd64'
+  BUILD_OUTPUT_PATH: 'az-functions'
+  ARTIFACT_NAME: 'api'
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.18
+
+    - name: Build
+      run: |
+        cd src
+        GOOS=${{ env.OS }} GOARCH=${{ env.ARCH }} go build -v -o ../${{ env.BUILD_OUTPUT_PATH }}/${{ env.ARTIFACT_NAME }} main.go
+        
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v3.1.0
+      with:
+        name: ${{ env.ARTIFACT_NAME }}
+        path: ${{ env.BUILD_OUTPUT_PATH }}/
+
+    - name: Test
+      run: |
+        cd src
+        go test -v ./...
+    
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Download a Build Artifact
+      uses: actions/download-artifact@v3.0.0
+      with:
+        name: ${{ env.ARTIFACT_NAME }}
+    
+    - name: Setup Function CLI Tools
+      run: |
+        wget -q https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
+        sudo dpkg -i packages-microsoft-prod.deb
+        sudo apt-get update
+        sudo apt-get install azure-functions-core-tools-4
+
+    - name: Log in to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Publish Azure Functions
+      run: |
+        func azure functionapp publish ${{ secrets.AZURE_FUNCTIONAPP_NAME }} --custom
+
+#     - name: Publish Azure Functions
+#       uses: Azure/functions-action@v1.4.7
+#       with:
+#         app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+
+    - name: Log out of Azure
+      run: |
+        az logout
