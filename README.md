@@ -6,6 +6,7 @@ This API aggregates over 10 National Weather Service APIs to provide concise inf
 # Local Env
 This API uses ArcGIS service to get lat/long from a given city or state name. Create a free API key on [ArcGIS developer portal](https://developers.arcgis.com) to use with this API.
 ### Environment variables needed
+
 ```
 API_KEY=ARCGIS_API_KEY
 GIN_MODE=release
