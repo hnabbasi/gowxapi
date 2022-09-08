@@ -48,26 +48,26 @@ jobs:
       with:
         name: ${{ env.ARTIFACT_NAME }}
     
-    - name: Setup Function CLI Tools
-      run: |
-        wget -q https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
-        sudo dpkg -i packages-microsoft-prod.deb
-        sudo apt-get update
-        sudo apt-get install azure-functions-core-tools-4
+#     - name: Setup Function CLI Tools
+#       run: |
+#         wget -q https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
+#         sudo dpkg -i packages-microsoft-prod.deb
+#         sudo apt-get update
+#         sudo apt-get install azure-functions-core-tools-4
 
     - name: Log in to Azure
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
     
-    - name: Publish Azure Functions
-      run: |
-        func azure functionapp publish ${{ secrets.AZURE_FUNCTIONAPP_NAME }} --custom
-
 #     - name: Publish Azure Functions
-#       uses: Azure/functions-action@v1.4.7
-#       with:
-#         app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+#       run: |
+#         func azure functionapp publish ${{ secrets.AZURE_FUNCTIONAPP_NAME }} --custom
+
+    - name: Publish Azure Functions
+      uses: Azure/functions-action@v1.4.7
+      with:
+        app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
 
     - name: Log out of Azure
       run: |
