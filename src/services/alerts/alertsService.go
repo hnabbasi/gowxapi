@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/hnabbasi/gowxapi/models"
 )
 
 const (
@@ -18,20 +16,20 @@ const (
 	stateAlerts = baseURL + "/alerts/active/area"
 )
 
-func GetAlerts(state string) (models.AlertResponse, error) {
+func GetAlerts(state string) (AlertResponse, error) {
 	url := fmt.Sprintf("%v/%v", stateAlerts, strings.ToUpper(state))
 	response, err := getHttpResponse(url)
 
 	var alertResponse struct {
-		Updated time.Time      `json:"updated"`
-		Alerts  []models.Alert `json:"features"`
+		Updated time.Time `json:"updated"`
+		Alerts  []Alert   `json:"features"`
 	}
 
 	if jsonErr := json.Unmarshal(response, &alertResponse); jsonErr != nil {
 		log.Println(jsonErr)
-		return models.AlertResponse{}, errors.New(jsonErr.Error())
+		return AlertResponse{}, errors.New(jsonErr.Error())
 	}
-	return models.AlertResponse{Updated: alertResponse.Updated, Count: len(alertResponse.Alerts), Alerts: alertResponse.Alerts}, err
+	return AlertResponse{Updated: alertResponse.Updated, Count: len(alertResponse.Alerts), Alerts: alertResponse.Alerts}, err
 }
 
 func getHttpResponse(url string) ([]byte, error) {

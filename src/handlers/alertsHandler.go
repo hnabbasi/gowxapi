@@ -7,7 +7,7 @@ import (
 	services "github.com/hnabbasi/gowxapi/services/alerts"
 )
 
-// Get all alerts for state by state code e.g. TX
+// GetAlertsForState Get all alerts for state by state code e.g. TX
 func GetAlertsForState() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if alerts, err := services.GetAlerts(c.Param("state")); err != nil {

@@ -2,12 +2,11 @@ package main
 
 import (
 	"fmt"
+	"github.com/gin-gonic/gin"
+	"github.com/hnabbasi/gowxapi/handlers"
 	"log"
 	"net/http"
 	"os"
-
-	"github.com/gin-gonic/gin"
-	"github.com/hnabbasi/gowxapi/handlers"
 )
 
 func main() {
@@ -27,6 +26,7 @@ func setupRoutes(router *gin.Engine) {
 		c.JSON(http.StatusOK, "\u26c5 Welcome to Hussain's Weather API")
 	})
 	router.GET("/weather/:cityState", handlers.GetWeather())
+	router.GET("/weather/c/:coords", handlers.GetWeatherByCoords())
 	router.GET("/alerts/:state", handlers.GetAlertsForState())
 }
 

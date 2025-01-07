@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hnabbasi/gowxapi/models"
 	alerts "github.com/hnabbasi/gowxapi/services/alerts"
 
 	"github.com/kaz-yamam0t0/go-timeparser/timeparser"
@@ -33,9 +32,9 @@ const (
 // - Hourly rain chances for next 24 hours
 // - Daily rain chances for next 7 days
 // - Area forecast discussion
-func GetWeather(cityState string) (models.WeatherResponse, error) {
+func GetWeather(cityState string) (WeatherResponse, error) {
 
-	weatherResponse := models.WeatherResponse{}
+	weatherResponse := WeatherResponse{}
 	wg := sync.WaitGroup{}
 
 	cityCoords, err := getCity(cityState)
@@ -62,19 +61,51 @@ func GetWeather(cityState string) (models.WeatherResponse, error) {
 	return weatherResponse, nil
 }
 
+// GetWeatherByCoords Get complete weather information for given coords e.g. 29.7608,-95.3695
+// including:
+// - Current conditions
+// - Active alerts
+// - Hourly conditions for next 24 hours
+// - Daily conditions for next 7 days
+// - Hourly rain chances for next 24 hours
+// - Daily rain chances for next 7 days
+// - Area forecast discussion
+func GetWeatherByCoords(cityCoords string) (WeatherResponse, error) {
+
+	weatherResponse := WeatherResponse{}
+	wg := sync.WaitGroup{}
+
+	location, err := getLocation(cityCoords)
+	if err != nil {
+		log.Println(err)
+		return weatherResponse, errors.New("could not find location")
+	}
+	weatherResponse.LocationResponse = location
+
+	wg.Add(6)
+	go startAlertsRoutine(&wg, &weatherResponse)
+	go startObservationsRoutine(&wg, &weatherResponse)
+	go startHourlyRoutine(&wg, &weatherResponse)
+	go startDailyRoutine(&wg, &weatherResponse)
+	go startRainRoutine(&wg, &weatherResponse)
+	go startAfdProductRoutine(&wg, &weatherResponse)
+	wg.Wait()
+	return weatherResponse, nil
+}
+
 // Goroutines
 
-func startAlertsRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+func startAlertsRoutine(wg *sync.WaitGroup, weatherResponse *WeatherResponse) {
 	response, err := alerts.GetAlerts(weatherResponse.LocationResponse.State)
 	if err != nil {
 		log.Printf(fmt.Sprintf("Could not pull alerts for %v. Error:%v", weatherResponse.LocationResponse.State, err.Error()))
 	} else {
-		weatherResponse.Alerts.AlertResponse = response
+		weatherResponse.Alerts = response
 	}
 	wg.Done()
 }
 
-func startObservationsRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+func startObservationsRoutine(wg *sync.WaitGroup, weatherResponse *WeatherResponse) {
 	url := fmt.Sprintf("%v/stations/%v/observations/latest?require_qc=true", baseURL, weatherResponse.LocationResponse.ObservationStation)
 	observations, err := getCurrentConditions(url)
 	if err != nil {
@@ -86,7 +117,7 @@ func startObservationsRoutine(wg *sync.WaitGroup, weatherResponse *models.Weathe
 	wg.Done()
 }
 
-func startHourlyRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+func startHourlyRoutine(wg *sync.WaitGroup, weatherResponse *WeatherResponse) {
 	hourly, err := getPeriods(weatherResponse.LocationResponse.HourlyForecastUrl, 24)
 	if err != nil {
 		log.Printf(fmt.Sprintf("Could not get hourly conditions. Error:%v", err.Error()))
@@ -96,7 +127,7 @@ func startHourlyRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherRespo
 	wg.Done()
 }
 
-func startDailyRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+func startDailyRoutine(wg *sync.WaitGroup, weatherResponse *WeatherResponse) {
 	daily, err := getDaily(weatherResponse.LocationResponse.ForecastUrl)
 	if err != nil {
 		log.Printf(fmt.Sprintf("Could not get daily conditions. Error:%v", err.Error()))
@@ -106,7 +137,7 @@ func startDailyRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherRespon
 	wg.Done()
 }
 
-func startRainRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+func startRainRoutine(wg *sync.WaitGroup, weatherResponse *WeatherResponse) {
 	rainChances, err := getRainChancesMap(weatherResponse.LocationResponse.ForecastGridDataUrl)
 	if err != nil {
 		log.Printf(fmt.Sprintf("Could not get rain chances. Error:%v", err.Error()))
@@ -117,7 +148,7 @@ func startRainRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherRespons
 	wg.Done()
 }
 
-func startAfdProductRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherResponse) {
+func startAfdProductRoutine(wg *sync.WaitGroup, weatherResponse *WeatherResponse) {
 	product, err := getAfdProduct(fmt.Sprintf("%v/products/types/AFD/locations/%v", baseURL, weatherResponse.CountyWarningArea))
 	if err != nil {
 		log.Printf(fmt.Sprintf("Could not get forecast discussion. Error:%v", err.Error()))
@@ -129,11 +160,11 @@ func startAfdProductRoutine(wg *sync.WaitGroup, weatherResponse *models.WeatherR
 
 // Methods
 
-func getAfdProduct(url string) (models.Product, error) {
+func getAfdProduct(url string) (Product, error) {
 	response, err := getHttpResponse(url)
 	if err != nil {
 		log.Fatal(err)
-		return models.Product{}, err
+		return Product{}, err
 	}
 
 	var allProductsResponse struct {
@@ -142,17 +173,17 @@ func getAfdProduct(url string) (models.Product, error) {
 		} `json:"@graph"`
 	}
 	if er := json.Unmarshal(response, &allProductsResponse); er != nil {
-		return models.Product{}, er
+		return Product{}, er
 	}
 
 	productResponse, err := getHttpResponse(string(allProductsResponse.Graph[0].Id))
 	if err != nil {
-		return models.Product{}, err
+		return Product{}, err
 	}
 
-	var product models.Product
+	var product Product
 	if err = json.Unmarshal(productResponse, &product); err != nil {
-		return models.Product{}, err
+		return Product{}, err
 	}
 
 	return product, nil
@@ -167,7 +198,7 @@ func getRainChancesMap(url string) (map[string][]int, error) {
 	var rainChancesResponse struct {
 		Properties struct {
 			Chances struct {
-				Values []models.ValueItem `json:"values"`
+				Values []ValueItem `json:"values"`
 			} `json:"probabilityOfPrecipitation"`
 		} `json:"properties"`
 	}
@@ -179,7 +210,7 @@ func getRainChancesMap(url string) (map[string][]int, error) {
 	return fillPeriods(rainChancesResponse.Properties.Chances.Values)
 }
 
-func fillPeriods(periods []models.ValueItem) (map[string][]int, error) {
+func fillPeriods(periods []ValueItem) (map[string][]int, error) {
 	retVal := make(map[string][]int)
 
 	for _, v := range periods {
@@ -207,16 +238,16 @@ func fillPeriods(periods []models.ValueItem) (map[string][]int, error) {
 	return retVal, nil
 }
 
-func getDaily(url string) ([]models.DailyForecast, error) {
+func getDaily(url string) ([]DailyForecast, error) {
 	response, err := getPeriods(url, 0)
 
-	dailyMap := make(map[int]models.DailyForecast)
+	dailyMap := make(map[int]DailyForecast)
 
 	for _, period := range response {
 		day, exists := dailyMap[period.StartTime.Day()]
 
 		if !exists {
-			day = models.DailyForecast{Date: period.StartTime, TemperatureUnit: "F"}
+			day = DailyForecast{Date: period.StartTime, TemperatureUnit: "F"}
 		}
 
 		if period.IsDaytime {
@@ -230,7 +261,7 @@ func getDaily(url string) ([]models.DailyForecast, error) {
 		dailyMap[period.StartTime.Day()] = day
 	}
 
-	var daily []models.DailyForecast
+	var daily []DailyForecast
 	for _, forecast := range dailyMap {
 		daily = append(daily, forecast)
 	}
@@ -240,7 +271,7 @@ func getDaily(url string) ([]models.DailyForecast, error) {
 	return daily, err
 }
 
-func getPeriods(url string, count int) ([]models.Period, error) {
+func getPeriods(url string, count int) ([]Period, error) {
 	response, err := getHttpResponse(url)
 
 	if err != nil {
@@ -249,7 +280,7 @@ func getPeriods(url string, count int) ([]models.Period, error) {
 
 	var periodsResponse struct {
 		Properties struct {
-			Period []models.Period `json:"periods"`
+			Period []Period `json:"periods"`
 		} `json:"properties"`
 	}
 	err = json.Unmarshal(response, &periodsResponse)
@@ -264,20 +295,20 @@ func getPeriods(url string, count int) ([]models.Period, error) {
 	}
 }
 
-func getCurrentConditions(url string) (models.Observation, error) {
+func getCurrentConditions(url string) (Observation, error) {
 	response, err := getHttpResponse(url)
 	if err != nil {
-		return models.Observation{}, err
+		return Observation{}, err
 	}
 
 	var observationResponse struct {
 		Properties struct {
-			models.Observation
+			Observation
 		} `json:"properties"`
 	}
 	err = json.Unmarshal(response, &observationResponse)
 	if err != nil {
-		return models.Observation{}, err
+		return Observation{}, err
 	}
 	return observationResponse.Properties.Observation, nil
 }
@@ -310,25 +341,25 @@ func getCity(c string) (string, error) {
 	return fmt.Sprintf("%v,%v", cityResponse.Candidates[0].Location.Long, cityResponse.Candidates[0].Location.Lat), nil
 }
 
-func getLocation(coords string) (models.LocationResponse, error) {
+func getLocation(coords string) (LocationResponse, error) {
 	url := fmt.Sprintf("%v/points/%v", baseURL, coords)
 	response, err := getHttpResponse(url)
 
 	if err != nil {
-		return models.LocationResponse{}, err
+		return LocationResponse{}, err
 	}
 
-	var location models.LocationDTO
+	var location LocationDTO
 	err = json.Unmarshal(response, &location)
 	if err != nil {
-		return models.LocationResponse{}, err
+		return LocationResponse{}, err
 	}
 	getObservationStation(location.Properties.ObservationStationsUrl, &location)
-	lr := models.MakeLocationResponse(location)
+	lr := MakeLocationResponse(location)
 	return lr, nil
 }
 
-func getObservationStation(stationUrl string, locationDTO *models.LocationDTO) {
+func getObservationStation(stationUrl string, locationDTO *LocationDTO) {
 	stations, err := getHttpResponse(stationUrl)
 
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Get complete weather information for a give city name e.g. Houston
+// GetWeather Get complete weather information for a give city name e.g. Houston
 // including:
 // - Current conditions
 // - Active alerts
@@ -20,6 +20,25 @@ import (
 func GetWeather() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if resp, err := services.GetWeather(c.Param("cityState")); err != nil {
+			c.IndentedJSON(http.StatusBadRequest, err)
+		} else {
+			c.IndentedJSON(http.StatusOK, resp)
+		}
+	}
+}
+
+// GetWeather Get complete weather information for a give city name e.g. Houston
+// including:
+// - Current conditions
+// - Active alerts
+// - Hourly conditions for next 24 hours
+// - Daily conditions for next 7 days
+// - Hourly rain chances for next 24 hours
+// - Daily rain chances for next 7 days
+// - Area forecast discussion
+func GetWeatherByCoords() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if resp, err := services.GetWeatherByCoords(c.Param("coords")); err != nil {
 			c.IndentedJSON(http.StatusBadRequest, err)
 		} else {
 			c.IndentedJSON(http.StatusOK, resp)
