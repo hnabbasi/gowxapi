@@ -27,7 +27,7 @@ func GetWeather() gin.HandlerFunc {
 	}
 }
 
-// GetWeather Get complete weather information for a give city name e.g. Houston
+// GetWeatherByCoords Get complete weather information for a give city name e.g. Houston
 // including:
 // - Current conditions
 // - Active alerts

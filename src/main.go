@@ -25,6 +25,10 @@ func setupRoutes(router *gin.Engine) {
 	router.GET("/api", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "\u26c5 Welcome to Hussain's Weather API")
 	})
+	router.POST("/login", handlers.Login())
+	router.GET("/locations", handlers.GetLocations())
+	router.GET("/configs", handlers.GetConfigurations())
+	router.GET("/configs/:key", handlers.GetConfiguration())
 	router.GET("/weather/:cityState", handlers.GetWeather())
 	router.GET("/weather/c/:coords", handlers.GetWeatherByCoords())
 	router.GET("/alerts/:state", handlers.GetAlertsForState())
